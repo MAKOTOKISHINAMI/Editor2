@@ -1,0 +1,2986 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>再現性チェッカー — 樹脂・金属・PVC加工の最小幅シミュレーター</title>
+<style>
+  :root {
+    --ink: #1b1f23; --ink-soft: #55606b; --line: #d8dde2; --line-soft: #ecf0f3;
+    --paper: #ffffff; --bg: #f2f4f6; --accent: #0f6e56; --accent-soft: #e1f5ee;
+    --warn: #b23b1d; --warn-soft: #fbe7e0; --info: #7a5a00; --info-soft: #fdf3d8;
+    --roi: #1a56db; --roi-soft: #e4ecfd;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif; background: var(--bg); color: var(--ink); line-height: 1.6; }
+  header { background: var(--paper); border-bottom: 1px solid var(--line); padding: 22px 28px; }
+  header h1 { margin: 0 0 4px; font-size: 19px; font-weight: 700; }
+  header p { margin: 0; font-size: 13px; color: var(--ink-soft); max-width: 820px; }
+
+  .layout { display: grid; grid-template-columns: 380px 1fr; gap: 20px; padding: 20px; align-items: start; }
+  @media (max-width: 940px) { .layout { grid-template-columns: 1fr; } }
+
+  .card { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 18px; }
+  .card + .card { margin-top: 16px; }
+  .card h2 { font-size: 13px; font-weight: 700; margin: 0 0 12px; color: var(--ink); }
+  .field { margin-bottom: 14px; }
+  .field:last-child { margin-bottom: 0; }
+  .field label { display: block; font-size: 12px; font-weight: 700; margin-bottom: 6px; color: var(--ink-soft); }
+  .field .hint { font-size: 11px; color: var(--ink-soft); margin-top: 4px; }
+
+  input[type="number"], input[type="text"], select {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px;
+    font-size: 13px; background: var(--paper); color: var(--ink);
+  }
+  input[type="range"] { width: 100%; }
+
+  .radio-row { display: flex; gap: 8px; }
+  .radio-row label { flex: 1; display: flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font-size: 12px; font-weight: 700; color: var(--ink-soft); cursor: pointer; }
+  .radio-row label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+  .radio-row input { margin: 0; }
+
+  .btn { padding: 10px; border: none; border-radius: 7px; font-size: 13px; font-weight: 700; cursor: pointer; }
+  .btn-block { width: 100%; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:disabled { opacity: .45; cursor: not-allowed; }
+  .btn-outline { background: var(--paper); color: var(--ink); border: 1px solid var(--line); }
+  .btn-outline.active { border-color: var(--roi); color: var(--roi); background: var(--roi-soft); }
+  .btn-outline.picking { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  .btn-sm { padding: 6px 10px; font-size: 11.5px; }
+  .btn-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .btn-row .btn { flex: 1; }
+
+  .swatch-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+  .swatch { width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--line); flex-shrink: 0; }
+  .swatch-label { font-size: 11.5px; color: var(--ink-soft); }
+
+  .palette-swatch-list { display: flex; flex-wrap: wrap; gap: 8px; }
+  .palette-swatch-item {
+    display: flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 8px;
+    padding: 5px 8px; font-size: 11px; color: var(--ink-soft);
+  }
+  .palette-swatch-dot { width: 18px; height: 18px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.15); flex-shrink: 0; }
+  .palette-metal-toggle { display: flex; align-items: center; gap: 3px; white-space: nowrap; cursor: pointer; }
+  .palette-metal-toggle input { margin: 0; }
+  .palette-swatch-item:has(.palette-metal-toggle input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+  .palette-swatch-del { border: none; background: none; color: var(--warn); font-weight: 700; cursor: pointer; font-size: 13px; padding: 0 2px; }
+  .palette-empty-note { font-size: 11.5px; color: var(--ink-soft); }
+
+  .status { font-size: 12px; margin-top: 10px; min-height: 16px; }
+  .status.err { color: var(--warn); }
+  .status.ok { color: var(--accent); }
+
+  .view-row { border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin-bottom: 10px; }
+  .view-row-head { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
+  .view-row-head input[type="text"] { flex: 1; font-weight: 700; }
+  .view-del-btn { border: none; background: var(--warn-soft); color: var(--warn); border-radius: 6px; width: 30px; height: 30px; cursor: pointer; font-weight: 700; flex-shrink: 0; }
+  .view-dropzone { border: 1.5px dashed var(--line); border-radius: 8px; padding: 16px 10px; text-align: center; cursor: pointer; font-size: 12px; color: var(--ink-soft); }
+  .view-dropzone:hover { border-color: var(--accent); color: var(--accent); }
+  .view-canvas-wrap {
+    background: linear-gradient(45deg, #eee 25%, transparent 25%), linear-gradient(-45deg, #eee 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #eee 75%), linear-gradient(-45deg, transparent 75%, #eee 75%);
+    background-size: 14px 14px; background-position: 0 0, 0 7px, 7px -7px, -7px 0;
+    display: flex; align-items: center; justify-content: center; padding: 8px; border-radius: 6px;
+  }
+  .view-canvas { max-width: 100%; max-height: 220px; image-rendering: pixelated; cursor: default; display: block; }
+  .view-canvas.crosshair { cursor: crosshair; }
+  .view-canvas.roi-cursor { cursor: cell; }
+  #colorMagnifier {
+    position: fixed; z-index: 9999; display: none; pointer-events: none;
+    background: #fff; border: 2px solid var(--accent, #2563eb); border-radius: 8px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.35); overflow: hidden;
+  }
+  #colorMagnifier canvas { display: block; image-rendering: pixelated; }
+  #colorMagnifier .mag-readout {
+    font-size: 12px; text-align: center; padding: 3px 0; background: #111; color: #fff;
+    font-family: monospace;
+  }
+  .view-size-row { display: flex; gap: 6px; margin-top: 8px; align-items: center; }
+  .view-size-row select { flex: 1; padding: 6px 8px; font-size: 12px; }
+  .view-size-row input { width: 70px; padding: 6px 8px; font-size: 12px; }
+  .view-size-row span { font-size: 11.5px; color: var(--ink-soft); white-space: nowrap; }
+  .view-file-info { font-size: 11px; color: var(--ink-soft); margin: 6px 0; word-break: break-all; }
+  .view-method-row { display: flex; gap: 6px; margin-top: 8px; }
+  .view-method-row select { flex: 1; }
+  .view-minwidth-row { display: flex; gap: 6px; margin-top: 8px; align-items: center; }
+  .view-minwidth-row input { width: 80px; }
+  .view-minwidth-row span { font-size: 11.5px; color: var(--ink-soft); }
+  .view-roi-row { margin-top: 8px; }
+  .view-roi-note { font-size: 10.5px; color: var(--roi); margin-top: 4px; }
+
+  .result-card { padding: 0; overflow: hidden; }
+  .result-card + .result-card { margin-top: 16px; }
+  .result-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--line); font-size: 12.5px; font-weight: 700; flex-wrap: wrap; gap: 6px; }
+  .result-toolbar label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: 400; }
+  .result-canvas-wrap {
+    background: linear-gradient(45deg, #eee 25%, transparent 25%), linear-gradient(-45deg, #eee 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #eee 75%), linear-gradient(-45deg, transparent 75%, #eee 75%);
+    background-size: 16px 16px; background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+    display: flex; align-items: center; justify-content: center; padding: 16px; min-height: 200px;
+  }
+  .result-canvas { max-width: 100%; image-rendering: pixelated; }
+  .summary-bar { display: flex; gap: 10px; padding: 14px 16px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+  .summary-chip { flex: 1; min-width: 130px; border-radius: 8px; padding: 10px 12px; background: var(--line-soft); font-size: 12px; color: var(--ink-soft); }
+  .summary-chip b { display: block; font-size: 18px; color: var(--ink); font-weight: 700; margin-bottom: 2px; }
+  .summary-chip.warn { background: var(--warn-soft); }
+  .summary-chip.warn b { color: var(--warn); }
+  .summary-chip.ok { background: var(--accent-soft); }
+  .summary-chip.ok b { color: var(--accent); }
+  .report-list { list-style: none; margin: 0; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .report-item { display: flex; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 12.5px; }
+  .report-item-clickable { cursor: pointer; transition: background 0.15s; }
+  .report-item-clickable:hover { background: var(--line-soft); border-color: var(--accent); }
+  .report-item .badge { width: 22px; height: 22px; border-radius: 50%; background: var(--warn); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+  .report-item .desc { flex: 1; }
+  .report-item .desc b { color: var(--warn); }
+  .empty-note { padding: 16px; font-size: 12.5px; color: var(--ink-soft); }
+  .overall-summary { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  .overall-summary .summary-chip { flex: 1; min-width: 160px; }
+
+  .caveat-card { border-color: var(--info); background: var(--info-soft); }
+  .caveat-card h2 { color: var(--info); }
+  .caveat-card ul { margin: 0; padding-left: 18px; font-size: 12.5px; color: #5c4600; }
+  .caveat-card li { margin-bottom: 8px; }
+  .caveat-card li:last-child { margin-bottom: 0; }
+  .caveat-card b { color: #4a3800; }
+
+  .disclaimer { font-size: 11px; color: var(--ink-soft); padding: 14px 16px; border-top: 1px solid var(--line); background: var(--line-soft); }
+
+  .variant-row { display: grid; grid-template-columns: 1.3fr 1fr 0.7fr auto; gap: 6px; align-items: center; margin-bottom: 8px; }
+  .variant-row input, .variant-row select { padding: 6px 8px; font-size: 12px; }
+  .variant-row .del-btn { border: none; background: var(--warn-soft); color: var(--warn); border-radius: 6px; width: 26px; height: 26px; cursor: pointer; font-weight: 700; }
+  .variant-row-labels { display: grid; grid-template-columns: 1.3fr 1fr 0.7fr auto; gap: 6px; font-size: 10.5px; color: var(--ink-soft); margin-bottom: 4px; }
+  /* ══════════════════════════════════════════════════════════════
+     使い方ガイド チャットボット(右下固定)
+     ══════════════════════════════════════════════════════════════ */
+  #helpBotButton {
+    position: fixed; right: 22px; bottom: 22px; width: 56px; height: 56px;
+    border-radius: 50%; background: var(--accent); color: #fff; border: none;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.25); cursor: pointer; font-size: 24px;
+    z-index: 1000; display: flex; align-items: center; justify-content: center;
+    transition: transform 0.15s;
+  }
+  #helpBotButton:hover { transform: scale(1.06); }
+  #helpBotButton .badge-dot {
+    position: absolute; top: 2px; right: 2px; width: 12px; height: 12px; border-radius: 50%;
+    background: #e2802e; border: 2px solid #fff;
+  }
+
+  #helpBotPanel {
+    position: fixed; right: 22px; bottom: 90px; width: 350px; max-width: calc(100vw - 32px);
+    height: 500px; max-height: calc(100vh - 130px);
+    background: var(--paper); border: 1px solid var(--line); border-radius: 14px;
+    box-shadow: 0 10px 34px rgba(0,0,0,0.22); display: none; flex-direction: column;
+    overflow: hidden; z-index: 1000;
+  }
+  #helpBotPanel.open { display: flex; }
+
+  .helpbot-header {
+    background: var(--accent); color: #fff; padding: 14px 16px; display: flex;
+    align-items: center; justify-content: space-between; flex-shrink: 0;
+  }
+  .helpbot-header h3 { margin: 0; font-size: 13.5px; font-weight: 700; }
+  .helpbot-header p { margin: 2px 0 0; font-size: 10.5px; opacity: 0.85; }
+  .helpbot-close { background: none; border: none; color: #fff; font-size: 20px; cursor: pointer; line-height: 1; padding: 2px 4px; }
+
+  .helpbot-messages {
+    flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px;
+    background: var(--bg);
+  }
+  .helpbot-msg { max-width: 88%; font-size: 12.5px; line-height: 1.6; padding: 9px 12px; border-radius: 12px; }
+  .helpbot-msg.bot { background: var(--paper); border: 1px solid var(--line); align-self: flex-start; border-bottom-left-radius: 3px; }
+  .helpbot-msg.user { background: var(--accent); color: #fff; align-self: flex-end; border-bottom-right-radius: 3px; }
+  .helpbot-msg b { color: var(--accent); }
+  .helpbot-msg.user b { color: #fff; }
+  .helpbot-msg ul { margin: 6px 0 0; padding-left: 18px; }
+  .helpbot-msg li { margin-bottom: 3px; }
+
+  .helpbot-quick { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 14px 12px; flex-shrink: 0; background: var(--bg); }
+  .helpbot-quick-btn {
+    border: 1px solid var(--accent); color: var(--accent); background: var(--paper);
+    border-radius: 14px; padding: 5px 10px; font-size: 11px; cursor: pointer;
+  }
+  .helpbot-quick-btn:hover { background: var(--accent-soft); }
+
+  .helpbot-input-row { display: flex; gap: 8px; padding: 10px; border-top: 1px solid var(--line); flex-shrink: 0; background: var(--paper); }
+  .helpbot-input-row input {
+    flex: 1; padding: 9px 12px; border: 1px solid var(--line); border-radius: 20px; font-size: 12.5px;
+  }
+  .helpbot-input-row button {
+    background: var(--accent); color: #fff; border: none; border-radius: 50%;
+    width: 36px; height: 36px; flex-shrink: 0; cursor: pointer; font-size: 15px;
+  }
+  @media (max-width: 480px) {
+    #helpBotPanel { right: 8px; left: 8px; width: auto; bottom: 78px; }
+    #helpBotButton { right: 16px; bottom: 16px; }
+  }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin="anonymous"></script>
+</head>
+<body>
+
+<header>
+  <h1>再現性チェッカー</h1>
+  <p>
+    お客様のイメージ画像(JPEG/PNG/SVG)と実寸(mm)を入力すると、金属プレート・ダイキャスト・ソフトPVCなど、
+    加工方法ごとの「最小再現幅」を下回っている箇所を自動検出して図示します。表面・裏面など複数アングルをまとめて解析でき、
+    画像内でキーホルダー金具や指示テキストなど解析対象外の部分は範囲選択で除外できます。
+  </p>
+</header>
+
+<div class="layout">
+
+  <div>
+    <div class="card">
+      <h2>① 製法</h2>
+      <div class="field">
+        <label for="globalMethodSelect">製法(すべての画像に共通で適用されます)</label>
+        <select id="globalMethodSelect" onchange="onGlobalMethodChange()"></select>
+        <p class="hint" id="globalMethodNote"></p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>② 画像を読み込む(正面・側面・裏面など)</h2>
+      <p class="hint" style="margin-bottom:10px;">
+        製法は①で1つだけ選びます(複数枚の画像はすべて同じ製法として扱われます)。各画像では、バリエーション(例:表面3D／裏面2D)・実寸・解析範囲だけを個別に設定できます。
+      </p>
+      <div id="viewList"></div>
+      <button type="button" class="btn btn-outline btn-block" onclick="addView()">＋ 画像を追加</button>
+    </div>
+
+    <div class="card">
+      <h2>③ 色の指定(全アングル共通)</h2>
+      <div class="field">
+        <label>背景色(材料が無い部分／「材料の最小幅」判定に使用)</label>
+        <div class="swatch-row">
+          <div class="swatch" id="resinSwatch" style="background:#ffffff;"></div>
+          <span class="swatch-label" id="resinSwatchLabel">自動判定(透明 or ほぼ白)</span>
+        </div>
+        <button type="button" class="btn btn-outline btn-block" id="resinPickBtn" style="margin-top:8px;" onclick="startPicking('resin')">画像をクリックして背景色を指定</button>
+      </div>
+      <div class="field">
+        <label>仕切り線(陽線)の色／「仕切りの最小幅」判定に使用</label>
+        <div class="swatch-row">
+          <div class="swatch" id="metalSwatch" style="background:#333333;"></div>
+          <span class="swatch-label" id="metalSwatchLabel">未指定</span>
+        </div>
+        <button type="button" class="btn btn-outline btn-block" id="metalPickBtn" style="margin-top:8px;" onclick="startPicking('metal')">画像をクリックして仕切り線の色を指定</button>
+        <p class="hint">金属プレート・ダイキャストの色入れは金属色(シルバー/ゴールド)の凸、ソフトPVCの色入れは同じ位置が凹になりますが、画像上ではどちらも「仕切りの線」として同じ色で描かれているはずなので、その線の色をクリックしてください。</p>
+      </div>
+      <div class="field">
+        <label for="toleranceInput">色の許容誤差 <span id="toleranceValue">40</span></label>
+        <input type="range" id="toleranceInput" min="5" max="120" value="40" oninput="document.getElementById('toleranceValue').textContent = this.value">
+        <p class="hint">JPEGのノイズやアンチエイリアスを考慮した色の近さの範囲です。</p>
+      </div>
+    </div>
+
+    <div class="card" id="metalFinishCard" style="display:none;">
+      <h2>④ 金属プレートの側面仕上げ</h2>
+      <div class="field">
+        <select id="metalSideFinish" onchange="renderCaveats()">
+          <option value="press">プレス抜きのまま(側面に縦線が入ります)</option>
+          <option value="polished">側面磨き仕上げ(縦線が目立たなくなります)</option>
+        </select>
+        <p class="hint">プレート状に打ち抜く際、側面に抜き線が入ります。プレートが厚いほど目立ちます。磨き仕上げを選ぶと目立たなくなりますが、追加コストがかかる場合があります。</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>⑤ デザインの色を登録する(推奨)</h2>
+      <p class="hint" style="margin-bottom:10px;">
+        自動判定は、グラデーションやアンチエイリアスも別の色として細かく拾ってしまうことがあります。
+        実際にデザインで使っている色をあらかじめ登録しておくと、すべての画素が最も近い登録色に丸められてから境界を検出するため、誤検出が大幅に減ります。
+      </p>
+      <div id="paletteList" style="margin-bottom:10px;"></div>
+      <div class="btn-row">
+        <button type="button" class="btn btn-outline" id="palettePickBtn" onclick="togglePaletteMode()">🎨 画像をクリックして色を追加</button>
+        <button type="button" class="btn btn-outline" onclick="clearPalette()">全てクリア</button>
+      </div>
+      <p class="hint" style="margin-top:8px;">色を登録しない場合は、従来通り自動判定(色の近さのみ)で境界を検出します。</p>
+      <p class="hint" style="margin-top:8px;">
+        各色の「凸(金属)にする」にチェックを入れると、その色の部分は仕切りの検出結果に関わらず、そのまま金属色(凸)として表示されます。
+        例えば輪郭線・目鼻・文字などにすでに使われている黒を金属色にしたい場合はこちらを使ってください。
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>⑥ 仕切り線(陽線)が無いデザインのプレビュー生成</h2>
+      <p class="hint" style="margin-bottom:10px;">
+        添付イラストに仕切り線が描かれていない場合、色と色が隣接しているすべての境界を自動検出し、指定した太さの仕切りを入れた場合のイメージ図を生成します。
+        背景(材料が無い部分)と接している輪郭線(＝製品全体のアウトライン)にも同様に仕切りが必要なため、そこにも生成されます。
+        あわせて、色分けが細かすぎる箇所も検出します(色を流し込む製法では「仕切りで埋まって色が入らない」、ポリストーンなど筆彩色の製法では「塗り分けできず隣の色にはみ出す」という指摘になります)。
+      </p>
+      <div class="field">
+        <label for="wallGenWidth">仕切りの太さ(mm)</label>
+        <input type="number" id="wallGenWidth" value="0.5" min="0.05" step="0.05">
+      </div>
+      <div class="field">
+        <label>仕上げの向き</label>
+        <div class="radio-row">
+          <label><input type="radio" name="wallGenDirection" value="convex" checked onchange="onWallGenDirectionChange()"><span>凸(金属プレート・ダイキャスト)</span></label>
+          <label><input type="radio" name="wallGenDirection" value="concave" onchange="onWallGenDirectionChange()"><span>凹(ソフトPVC)</span></label>
+        </div>
+      </div>
+      <div class="field" id="wallGenColorField">
+        <label>仕切り(金属)の色</label>
+        <div class="swatch-row">
+          <div class="swatch" id="wallGenColorSwatch" style="background:#c9ccd1;"></div>
+          <input type="color" id="wallGenColorPicker" value="#c9ccd1" style="width:60px; padding:2px;" oninput="document.getElementById('wallGenColorSwatch').style.background=this.value;">
+          <span class="swatch-label">シルバー系・ゴールド系などお好みで選んでください</span>
+        </div>
+      </div>
+      <div class="field" id="wallGenSensitivityField">
+        <label for="wallGenSensitivity">色の境界を検出する感度 <span id="wallGenSensitivityValue">40</span></label>
+        <input type="range" id="wallGenSensitivity" min="10" max="120" value="40" oninput="document.getElementById('wallGenSensitivityValue').textContent = this.value">
+        <p class="hint">値が小さいほど、わずかな色の違いも境界として拾います。色を登録した場合はこの感度は使いません。</p>
+      </div>
+      <button type="button" class="btn btn-primary btn-block" onclick="runWallGeneration()">製品イメージを生成する</button>
+    </div>
+
+    <div class="card">
+      <button type="button" class="btn btn-primary btn-block" id="analyzeBtn" onclick="runAnalysis()" disabled>すべてのアングルを解析する</button>
+      <p class="status" id="statusMsg"></p>
+    </div>
+
+    <div class="card">
+      <h2>⑧ 実寸SVG／PDFで書き出す</h2>
+      <p class="hint" style="margin-bottom:10px;">
+        実寸(mm)に合わせたSVG・PDFファイルを書き出します(どちらも同じ内容で、画像ではなくベクターデータです)。右下に、⑤で登録した色(未登録なら③で指定した色)の一覧を配置します。<br>
+        ポリストーン等(筆彩色)は、形状の輪郭線と、⑤で登録した色どうしの境目(仕切り線)を、それぞれ右下の色一覧と同じ色の塗りとしてベクトル化します。<br>
+        金属プレート・ダイキャストの凸凹色入れは、仕切り(壁)を仕切り幅に合わせた2本線でアウトライン化し、色が入る凹部分は右下の色一覧と同じ色で塗りつぶします(色入れ無しは2本線のみ)。<br>
+        <span style="color:#a15c00;">※ ピクセル画像の輪郭をそのままなぞる単純な変換のため、曲線部分はやや直線的(階段状)になります。滑らかな清書が必要な場合は、書き出したSVG/PDFを別途Illustrator等で仕上げてください。</span>
+      </p>
+      <div style="display:flex; gap:8px;">
+        <button type="button" class="btn btn-primary btn-block" onclick="runSvgExport()" style="flex:1;">SVGを書き出す</button>
+        <button type="button" class="btn btn-primary btn-block" onclick="runPdfExport()" style="flex:1;">PDFを書き出す</button>
+      </div>
+      <div id="svgExportStatus" class="status"></div>
+      <div id="svgExportResultsArea"></div>
+    </div>
+
+    <div class="card">
+      <h2 style="cursor:pointer;" onclick="toggleMethodManager()">⑦ 製法を追加・管理する <span id="methodManagerToggleIcon">▸</span></h2>
+      <div id="methodManagerBody" style="display:none;">
+        <p class="hint" style="margin-bottom:12px;">
+          仕様(バリエーション)と最小サイズを入力して登録すると、①の製法一覧にすぐ追加されます。
+          登録した製法一覧はJSONで書き出し・読み込みができるので、他のPCや同僚とも共有できます。
+        </p>
+        <div class="field">
+          <label for="newMethodName">製法名</label>
+          <input type="text" id="newMethodName" placeholder="例: UVプリント銘板">
+        </div>
+        <div class="field">
+          <label for="newMethodNote">製法のメモ(任意)</label>
+          <input type="text" id="newMethodNote" placeholder="例: アクリル板にUVインクを直接印刷">
+        </div>
+        <div id="newVariantRows"></div>
+        <button type="button" class="btn btn-outline" onclick="addVariantRow()" style="margin-bottom:10px;">＋ バリエーションを追加</button>
+        <button type="button" class="btn btn-primary btn-block" onclick="saveNewMethod()">この製法を登録する</button>
+        <div style="border-top:1px solid var(--line); margin:16px 0 12px;"></div>
+        <div class="field">
+          <label>製法一覧のバックアップ</label>
+          <div style="display:flex; gap:8px;">
+            <button type="button" class="btn btn-outline" onclick="exportMethods()">JSONで書き出す</button>
+            <button type="button" class="btn btn-outline" onclick="document.getElementById('importMethodsInput').click()">JSONを読み込む</button>
+          </div>
+          <input type="file" id="importMethodsInput" accept=".json,application/json" style="display:none;" onchange="importMethods(event)">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="card caveat-card">
+      <h2>⚠️ このツールで分かること／分からないこと</h2>
+      <ul id="caveatList"></ul>
+    </div>
+
+    <div id="overallSummaryWrap" style="display:none;">
+      <div class="overall-summary" id="overallSummary"></div>
+    </div>
+
+    <div id="resultsArea">
+      <div class="card empty-note">まだ解析していません。②で画像を読み込み、「解析する」を押してください。</div>
+    </div>
+
+    <div id="wallGenResultsArea"></div>
+
+    <div class="card disclaimer" style="margin-top:16px;">
+      ※ この結果は画像の色分布から機械的に推定した目安です。実際の再現性は素材・加工機・メーカーの仕様によって変わります。
+      赤く示された箇所は「最小幅を下回っている＝実物では潰れる/太る/色が混ざる可能性がある」場所として、最終的には加工会社に確認してください。
+      解析範囲として指定していない部分(金具・指示テキストなど)は計算に含まれません。
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // ══════════════════════════════════════════════════════════════
+  //  状態管理
+  // ══════════════════════════════════════════════════════════════
+  let views = [];
+  let viewIdCounter = 0;
+  let pickingMode = null;      // 'resin' | 'metal' | null
+  let resinColor = null;
+  let metalColor = null;
+  let paletteColors = [];      // デザインで実際に使われている色のリスト([r,g,b]の配列)。登録すると全画素がこの中の最も近い色に丸められる。
+  let paletteMode = false;     // trueの間、画像クリックのたびにパレットへ色を追加し続ける
+  let blinkTimer = null;       // 指摘リストをクリックした際の点滅表示の管理用
+
+  // レポートのリスト項目をクリックしたときに、対応するマーカーを一定時間点滅させる。
+  // drawFn(highlightIndex) は、highlightIndexで指定した番号のマーカーだけを強調して描く再描画関数を渡す。
+  function blinkMarker(drawFn, index, canvasEl) {
+    if (blinkTimer) { clearInterval(blinkTimer); blinkTimer = null; }
+    if (canvasEl && canvasEl.scrollIntoView) canvasEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    let on = true, ticks = 0;
+    drawFn(index);
+    blinkTimer = setInterval(function() {
+      on = !on;
+      drawFn(on ? index : null);
+      ticks++;
+      if (ticks >= 7) { clearInterval(blinkTimer); blinkTimer = null; drawFn(null); }
+    }, 260);
+  }
+  const VIEW_MAX_DIM = 900;
+
+  // ══════════════════════════════════════════════════════════════
+  //  距離変換・太さ判定・マスク生成・クラスタリング(コアアルゴリズム)
+  // ══════════════════════════════════════════════════════════════
+  function chamferDistanceTransform(mask, w, h) {
+    const INF = 1e9;
+    const dist = new Float32Array(w * h);
+    for (let i = 0; i < w * h; i++) dist[i] = mask[i] ? 0 : INF;
+    const D1 = 1, D2 = Math.SQRT2;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const idx = y * w + x; let d = dist[idx];
+      if (x > 0) d = Math.min(d, dist[idx - 1] + D1);
+      if (y > 0) d = Math.min(d, dist[idx - w] + D1);
+      if (x > 0 && y > 0) d = Math.min(d, dist[idx - w - 1] + D2);
+      if (x < w - 1 && y > 0) d = Math.min(d, dist[idx - w + 1] + D2);
+      dist[idx] = d;
+    }
+    for (let y = h - 1; y >= 0; y--) for (let x = w - 1; x >= 0; x--) {
+      const idx = y * w + x; let d = dist[idx];
+      if (x < w - 1) d = Math.min(d, dist[idx + 1] + D1);
+      if (y < h - 1) d = Math.min(d, dist[idx + w] + D1);
+      if (x < w - 1 && y < h - 1) d = Math.min(d, dist[idx + w + 1] + D2);
+      if (x > 0 && y < h - 1) d = Math.min(d, dist[idx + w - 1] + D2);
+      dist[idx] = d;
+    }
+    return dist;
+  }
+  function distToBackground(mask, w, h) {
+    const bg = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) bg[i] = mask[i] ? 0 : 1;
+    return chamferDistanceTransform(bg, w, h);
+  }
+  function detectThinRegions(mask, w, h, radiusPx) {
+    const distToBg = distToBackground(mask, w, h);
+    const eroded = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) eroded[i] = (mask[i] && distToBg[i] >= radiusPx) ? 1 : 0;
+    const distToEroded = chamferDistanceTransform(eroded, w, h);
+    const opened = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) opened[i] = distToEroded[i] <= radiusPx ? 1 : 0;
+    const violation = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) violation[i] = (mask[i] && !opened[i]) ? 1 : 0;
+    return { violation, distToBg };
+  }
+  function colorDist(r, g, b, ref) {
+    const dr = r - ref[0], dg = g - ref[1], db = b - ref[2];
+    return Math.sqrt(dr * dr + dg * dg + db * db);
+  }
+  function buildTargetMask(imageData, w, h, mode, refColor, tolerance, paletteColors) {
+    const data = imageData.data;
+    const mask = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) {
+      const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2], a = data[i * 4 + 3];
+      if (a < 16) { mask[i] = 0; continue; }
+      if (mode === 'resin') {
+        const bg = refColor || [255, 255, 255];
+        let isMaterial = colorDist(r, g, b, bg) > tolerance;
+        // ⑤で登録したデザインの色に近い画素は、背景色(白など)に近い色であっても、
+        // 「登録済みの色=材料」として扱う。プリント柄の白いマークなどが、背景の白と
+        // 見分けがつかず誤って「材料なし」の穴として検出されるのを防ぐため。
+        if (!isMaterial && paletteColors && paletteColors.length) {
+          for (let p = 0; p < paletteColors.length; p++) {
+            if (colorDist(r, g, b, paletteColors[p].rgb) <= tolerance) { isMaterial = true; break; }
+          }
+        }
+        mask[i] = isMaterial ? 1 : 0;
+      } else {
+        mask[i] = colorDist(r, g, b, refColor) <= tolerance ? 1 : 0;
+      }
+    }
+    return mask;
+  }
+  // 指定した範囲(regions、workCanvas座標のrect配列)の外側を強制的にマスクから除外する。
+  // regionsが空の場合は画像全体をそのまま対象にする(=従来通り)。
+  function applyRegionMask(mask, w, h, regions) {
+    if (!regions || !regions.length) return mask;
+    const restricted = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let inside = false;
+        for (const r of regions) {
+          if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) { inside = true; break; }
+        }
+        if (inside) restricted[y * w + x] = mask[y * w + x];
+      }
+    }
+    return restricted;
+  }
+
+  // マスクの中から最大のひとつながりのかたまりだけを残す。
+  // 解析範囲(ROI)を手動指定していない場合のデフォルト動作として使い、
+  // 製品本体から離れた寸法線・カラーコードの文字・トリムマーク(通常は小さく孤立している)を自動的に除外する。
+  // マスク(mask=1の画素)が占める範囲の外形(バウンディングボックス)をpx単位で求める。
+  // 実寸(mm)は「画像全体」ではなく「実際に検出された中身」の幅・高さに対応させるために使う。
+  function computeMaskBBoxPx(mask, w, h) {
+    let minX = w, minY = h, maxX = -1, maxY = -1;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (!mask[y * w + x]) continue;
+        if (x < minX) minX = x; if (x > maxX) maxX = x;
+        if (y < minY) minY = y; if (y > maxY) maxY = y;
+      }
+    }
+    if (maxX < minX) return { width: 0, height: 0, minX: 0, minY: 0 };
+    return { width: maxX - minX + 1, height: maxY - minY + 1, minX: minX, minY: minY };
+  }
+  function extractLargestComponentMask(mask, w, h) {
+    const visited = new Uint8Array(w * h);
+    let bestSize = 0, bestPixels = null;
+    for (let start = 0; start < w * h; start++) {
+      if (!mask[start] || visited[start]) continue;
+      const compPixels = [];
+      const stack = [start];
+      visited[start] = 1;
+      while (stack.length) {
+        const cur = stack.pop();
+        compPixels.push(cur);
+        const cx = cur % w, cy = (cur / w) | 0;
+        const neigh = [[cx - 1, cy], [cx + 1, cy], [cx, cy - 1], [cx, cy + 1]];
+        for (const [nx, ny] of neigh) {
+          if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+            const nidx = ny * w + nx;
+            if (mask[nidx] && !visited[nidx]) { visited[nidx] = 1; stack.push(nidx); }
+          }
+        }
+      }
+      if (compPixels.length > bestSize) { bestSize = compPixels.length; bestPixels = compPixels; }
+    }
+    if (!bestPixels) return mask; // 何も見つからない場合は元のマスクをそのまま返す
+    const out = new Uint8Array(w * h);
+    for (const idx of bestPixels) out[idx] = 1;
+    return out;
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  仕切り線(陽線)自動生成：色と色が隣接するすべての境界を検出し、
+  //  指定した太さの仕切りゾーンを作る(背景と接する外周＝製品のアウトラインも同様に対象)。
+  // ══════════════════════════════════════════════════════════════
+  // materialMask=1の画素どうしが隣接していて、色が閾値以上違う場合に「境界」とみなす。
+  // 細かい鉛筆の陰影線・毛並みのハッチングなどのノイズをならすための単純なボックスブラー。
+  // 色入れ無しの全体金属プレビューで、内部の境界検出にこのぼかし後の画像を使うことで、
+  // 毛並みの1本1本まで拾ってレース状に穴だらけになるのを防ぎ、大きな形(耳・角・リング穴など)
+  // の境目だけを拾うようにする。
+  function boxBlurImageData(imageData, w, h, radius) {
+    const src = imageData.data;
+    const tmp = new Uint8ClampedArray(src.length);
+    const out = new Uint8ClampedArray(src.length);
+    // 横方向
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let r = 0, g = 0, b = 0, n = 0;
+        for (let dx = -radius; dx <= radius; dx++) {
+          const xx = x + dx; if (xx < 0 || xx >= w) continue;
+          const i = (y * w + xx) * 4;
+          r += src[i]; g += src[i + 1]; b += src[i + 2]; n++;
+        }
+        const o = (y * w + x) * 4;
+        tmp[o] = r / n; tmp[o + 1] = g / n; tmp[o + 2] = b / n; tmp[o + 3] = src[o + 3];
+      }
+    }
+    // 縦方向
+    for (let x = 0; x < w; x++) {
+      for (let y = 0; y < h; y++) {
+        let r = 0, g = 0, b = 0, n = 0;
+        for (let dy = -radius; dy <= radius; dy++) {
+          const yy = y + dy; if (yy < 0 || yy >= h) continue;
+          const i = (yy * w + x) * 4;
+          r += tmp[i]; g += tmp[i + 1]; b += tmp[i + 2]; n++;
+        }
+        const o = (y * w + x) * 4;
+        out[o] = r / n; out[o + 1] = g / n; out[o + 2] = b / n; out[o + 3] = tmp[o + 3];
+      }
+    }
+    return { data: out };
+  }
+  function detectColorBoundaries(imageData, materialMask, w, h, edgeThreshold) {
+    const data = imageData.data;
+    const boundary = new Uint8Array(w * h);
+    function colorAt(i) { return [data[i * 4], data[i * 4 + 1], data[i * 4 + 2]]; }
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        if (!materialMask[i]) continue;
+        const c0 = colorAt(i);
+        if (x < w - 1 && materialMask[i + 1]) {
+          const c1 = colorAt(i + 1);
+          if (colorDist(c0[0], c0[1], c0[2], c1) > edgeThreshold) { boundary[i] = 1; boundary[i + 1] = 1; }
+        }
+        if (y < h - 1 && materialMask[i + w]) {
+          const c1 = colorAt(i + w);
+          if (colorDist(c0[0], c0[1], c0[2], c1) > edgeThreshold) { boundary[i] = 1; boundary[i + w] = 1; }
+        }
+      }
+    }
+    return boundary;
+  }
+  // 境界を半径radiusPx(=仕切り幅の半分)だけ広げ、材料の外にははみ出させない
+  function buildWallZone(boundary, materialMask, w, h, radiusPx) {
+    const distToBoundary = chamferDistanceTransform(boundary, w, h);
+    const zone = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) zone[i] = (materialMask[i] && distToBoundary[i] <= radiusPx) ? 1 : 0;
+    return zone;
+  }
+
+  // ── 色パレット(登録色)を使った量子化 ──
+  // 材料マスク内の各画素を、登録色のうち最も近いものに割り当てる(ラベル番号、-1=対象外)。
+  // これによりグラデーション・アンチエイリアスのノイズが吸収され、意図した色数だけで境界検出できる。
+  function buildPaletteLabelMap(imageData, materialMask, w, h, palette) {
+    const data = imageData.data;
+    const labels = new Int16Array(w * h).fill(-1);
+    for (let i = 0; i < w * h; i++) {
+      if (!materialMask[i]) continue;
+      let best = 0, bestDist = Infinity;
+      for (let k = 0; k < palette.length; k++) {
+        const d = colorDist(data[i * 4], data[i * 4 + 1], data[i * 4 + 2], palette[k].rgb);
+        if (d < bestDist) { bestDist = d; best = k; }
+      }
+      labels[i] = best;
+    }
+    return labels;
+  }
+  // 各画素について「自分とは違うラベル(=別の色。背景も含む)を持つ最寄りの画素までの距離」を求める。
+  // ラベルの数だけ距離変換を行い、各ラベルLについて「Lではない画素」を前景として求めた距離のうち、
+  // 実際にラベルLである画素の値だけを採用して1枚の距離マップに合成する。
+  // ※ 従来は「境界(隣接画素どうしでラベルが違う場所)」を先に2px幅でマーキングしてから距離変換していたが、
+  //   その境界マーキング自体が2px分の幅を持ってしまうため、生成される仕切りが指定した太さより
+  //   常に太くなってしまう不具合があった(0.5mm指定で実測0.8mmなど)。この関数は境界を経由せず直接
+  //   距離を測るため、2色の間の仕切りの合計幅が指定した太さ(片側0.5mm+反対側0.5mm=1mmではなく、
+  //   ちょうど0.5mm)に一致する。
+  function computeDistToDifferentLabel(labels, w, h, numLabels, excludeBackground) {
+    const dist = new Float32Array(w * h).fill(Infinity);
+    for (let L = 0; L < numLabels; L++) {
+      const differentMask = new Uint8Array(w * h);
+      for (let i = 0; i < w * h; i++) {
+        differentMask[i] = excludeBackground
+          ? (labels[i] !== L && labels[i] >= 0 ? 1 : 0)  // 背景(-1)は「違う色」に含めない＝他の色にだけ反応する
+          : (labels[i] !== L ? 1 : 0);                    // 背景も含めて反応する(輪郭線の仕切り生成用)
+      }
+      const d = chamferDistanceTransform(differentMask, w, h);
+      for (let i = 0; i < w * h; i++) if (labels[i] === L) dist[i] = d[i];
+    }
+    return dist;
+  }
+
+  // 連結成分ごとに、画素の一覧と重心を返す(色入れ可否の判定で「壁を実際に引いたら何%残るか」を調べるのに使う)
+  function findConnectedComponentsPixels(mask, w, h) {
+    const visited = new Uint8Array(w * h);
+    const comps = [];
+    for (let start = 0; start < w * h; start++) {
+      if (!mask[start] || visited[start]) continue;
+      const stack = [start]; visited[start] = 1;
+      const pixels = [];
+      let sumX = 0, sumY = 0;
+      while (stack.length) {
+        const cur = stack.pop(); pixels.push(cur);
+        const cx = cur % w, cy = (cur / w) | 0;
+        sumX += cx; sumY += cy;
+        const neigh = [[cx - 1, cy], [cx + 1, cy], [cx, cy - 1], [cx, cy + 1]];
+        for (const [nx, ny] of neigh) {
+          if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+            const nidx = ny * w + nx;
+            if (mask[nidx] && !visited[nidx]) { visited[nidx] = 1; stack.push(nidx); }
+          }
+        }
+      }
+      comps.push({ pixels, cx: sumX / pixels.length, cy: sumY / pixels.length });
+    }
+    return comps;
+  }
+
+  // 登録した色ごとに、「実際に指定した太さの仕切りを引いたら、その色の面はどれだけ残るか」を判定する。
+  // ⑥で実際に生成する仕切りゾーン(distToDifferentLabel <= radiusPx)をそのまま使って判定するため、
+  // 「両側に仕切り幅を確保する」といった二重計算にはならない(2色の間の仕切りは常に指定した太さちょうどになる)。
+  // 元の面積のうち残る割合が一定以下(ほぼ塗りつぶされてしまう)の場合だけ、印刷への変更を提案する。
+  const CONSUMED_SURVIVE_RATIO = 0.12; // これ未満しか残らない場合は「実質埋まる」とみなす
+  function findThinColorRegions(imageData, materialMask, w, h, palette, mmPerPxScaled, wallWidthMm) {
+    const labels = buildPaletteLabelMap(imageData, materialMask, w, h, palette);
+    const radiusPx = (wallWidthMm / mmPerPxScaled) / 2;
+    // ※ ここでは「他の色との間の仕切り」だけを見たいので、背景(輪郭線の外側)は「違う色」に含めない。
+    //   輪郭線ぎりぎりの色は、そもそも製品の外周(=常に金属の縁になる部分)であり、
+    //   色を流し込む/流し込まないの判定とは無関係なため。
+    const distToDiff = computeDistToDifferentLabel(labels, w, h, palette.length, true);
+    const rawSuggestions = [];
+    palette.forEach(function(color, idx) {
+      if (color.asMetal) return; // 金属色として扱う指定の色は、そもそも塗り分けの対象ではないので印刷提案の判定から除外する
+      const colorMask = new Uint8Array(w * h);
+      for (let i = 0; i < w * h; i++) colorMask[i] = (labels[i] === idx) ? 1 : 0;
+      const comps = findConnectedComponentsPixels(colorMask, w, h);
+      // 先端の色どうしが1点で接するような場所では、アンチエイリアス(色のにじみ)が本体から
+      // 切り離された極小の断片として誤って検出されることがある。その色の合計面積に対して
+      // 明らかに小さい断片(3%未満、かつ絶対数でも小さい)は、ノイズとして無視する。
+      const totalPixelsForColor = comps.reduce((a, c) => a + c.pixels.length, 0);
+      const noiseThreshold = Math.max(20, totalPixelsForColor * 0.03);
+      comps.forEach(function(comp) {
+        if (comp.pixels.length < noiseThreshold) return; // ノイズ(アンチエイリアスの孤立断片など)は無視
+        let survive = 0;
+        for (const idx2 of comp.pixels) if (distToDiff[idx2] > radiusPx) survive++;
+        const surviveRatio = survive / comp.pixels.length;
+        if (surviveRatio < CONSUMED_SURVIVE_RATIO) {
+          rawSuggestions.push({
+            colorHex: '#' + color.rgb.map(c => c.toString(16).padStart(2, '0')).join(''),
+            cx: comp.cx, cy: comp.cy,
+            surviveRatio
+          });
+        }
+      });
+    });
+    // 文字の1画1画・矢印の断片など、同じ意味のまとまりが大量の細切れとして出てしまうため、
+    // 近い場所にある指摘は1つにまとめる(細かすぎる結果を出さないため)。
+    const mergeRadiusPx = SUGGESTION_MERGE_MM / mmPerPxScaled;
+    const suggestions = mergeNearbySuggestions(rawSuggestions, mergeRadiusPx);
+    return { labels, distToDiff, suggestions };
+  }
+  const SUGGESTION_MERGE_MM = 4; // この距離(mm)以内にある指摘どうしは1つにまとめる
+  // 近接する指摘を貪欲法でグルーピングし、代表点(重心)・件数・色の一覧にまとめる
+  function mergeNearbySuggestions(suggestions, mergeRadiusPx) {
+    const clusters = [];
+    suggestions.forEach(function(s) {
+      let target = null;
+      for (const c of clusters) {
+        const dx = c.cx - s.cx, dy = c.cy - s.cy;
+        if (Math.sqrt(dx * dx + dy * dy) <= mergeRadiusPx) { target = c; break; }
+      }
+      if (target) {
+        target.items.push(s);
+        target.cx = target.items.reduce((a, i) => a + i.cx, 0) / target.items.length;
+        target.cy = target.items.reduce((a, i) => a + i.cy, 0) / target.items.length;
+      } else {
+        clusters.push({ cx: s.cx, cy: s.cy, items: [s] });
+      }
+    });
+    return clusters.map(function(c) {
+      const colors = [...new Set(c.items.map(i => i.colorHex))];
+      const worstSurviveRatio = Math.min.apply(null, c.items.map(i => i.surviveRatio));
+      return {
+        cx: c.cx, cy: c.cy, count: c.items.length,
+        colorHex: colors.length === 1 ? colors[0] : (colors.length + '色'),
+        worstSurviveRatio
+      };
+    });
+  }
+
+  function clusterViolations(flag, thickness, w, h) {
+    const visited = new Uint8Array(w * h);
+    const clusters = [];
+    for (let start = 0; start < w * h; start++) {
+      if (!flag[start] || visited[start]) continue;
+      const stack = [start]; visited[start] = 1;
+      let minX = w, maxX = 0, minY = h, maxY = 0, count = 0, maxThickness = 0;
+      while (stack.length) {
+        const cur = stack.pop(); count++;
+        const cx = cur % w, cy = (cur / w) | 0;
+        if (cx < minX) minX = cx; if (cx > maxX) maxX = cx;
+        if (cy < minY) minY = cy; if (cy > maxY) maxY = cy;
+        // ※ 指摘領域内の「最小」の太さを使うと、どんな形状でも輪郭の角・先端付近の画素は
+        //   必ずほぼゼロに近い値になってしまい、線の本来の太さに関係なく常に極小値が出てしまう。
+        //   「この指摘領域は、一番太い場所ですら基準に届いていない」という最大値の方が、
+        //   実際の線の太さを正しく表す指標になる。
+        if (thickness[cur] > maxThickness) maxThickness = thickness[cur];
+        const neigh = [[cx - 1, cy], [cx + 1, cy], [cx, cy - 1], [cx, cy + 1]];
+        for (const [nx, ny] of neigh) {
+          if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+            const nidx = ny * w + nx;
+            if (flag[nidx] && !visited[nidx]) { visited[nidx] = 1; stack.push(nidx); }
+          }
+        }
+      }
+      if (count < 3) continue;
+      clusters.push({ minX, maxX, minY, maxY, count, maxThickness, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2 });
+    }
+    clusters.sort((a, b) => a.maxThickness - b.maxThickness);
+    return clusters;
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  製法データ
+  // ══════════════════════════════════════════════════════════════
+  let PRODUCTION_METHODS = [
+    {
+      id: 'diecast', name: 'ダイキャスト', note: '亜鉛合金等を金型に流し込んで成形。', colorMode: 'flow',
+      variants: [
+        { id: 'plate', label: 'プレート成形(平面)', checkType: 'material', minWidthMm: 0.8,
+          note: '文字・細い線の最小幅の目安です。成形で形状も仕上げるため側面はきれいに仕上がりますが、型から抜きやすくするため側面にわずかな勾配がつき、断面が台形に近くなります。' },
+        { id: 'solid', label: '立体成形', checkType: 'material', minWidthMm: 1.0,
+          note: '突起・凹みの最小幅の目安です。硬い金型なのでアンダーカット(引っかかり形状)は基本的に抜けません。' },
+        { id: 'enamel', label: '凸凹色入れ有り(2色以上)', checkType: 'wall', minWidthMm: 0.5,
+          note: '色と色の間の仕切り(陽線、金属色の凸)の最小幅です。金型に彫り込んで色を流し込むため、金属プレートの型押しと同程度の太さが必要です(エッチングほど細かくは表現できません)。' },
+        { id: 'solid_nocolor', label: '凸凹色入れ無し(立体・メッキ1色)', checkType: 'material', minWidthMm: 1.0,
+          note: '立体的な凸凹(模様・キャラクター等)はあるが、色分けはせずメッキ仕上げ一色のみにする場合の、突起・凹みの最小幅の目安です。⑥の仕切り線プレビューでは、製品全体がそのまま指定した金属色(シルバー等)で表示されます。' },
+        { id: 'plain', label: '色入れ無し(メッキ1色のみ)', checkType: 'material', minWidthMm: 0.8,
+          note: '色を流し込まず、メッキ仕上げ一色のみにする場合の、文字・細い線の最小幅の目安です。' }
+      ]
+    },
+    {
+      id: 'polystone', name: 'ポリストーン(シリコン型樹脂)', note: 'シリコン型に樹脂を流し込んで成形。彩色は筆による手塗りです。', colorMode: 'brush',
+      variants: [
+        { id: 'default', label: '標準(立体成形)', checkType: 'material', minWidthMm: 1.0,
+          note: '細い線・突起の最小幅の目安です。シリコン型は多少のアンダーカットなら抜けますが、勾配が強すぎる・彫り込みが深すぎると型が裂けることがあります。' }
+      ]
+    },
+    {
+      id: 'metalplate', name: '金属プレート', note: '背景は基本的にニッケル等シルバーメッキ、または金メッキのメタルカラーになります。', colorMode: 'flow',
+      variants: [
+        { id: 'engrave_etch_mono', label: '単色彫刻(エッチング・1色のみ色入れ)', checkType: 'material', minWidthMm: 0.3,
+          note: '彫刻(凹)の細い線・文字の最小幅です。これより細い部分は、実際には線どうしがつながって太い塊になり、デザインより黒色部分が広くなります。対応素材: 真鍮・ステンレスのみ。' },
+        { id: 'engrave_press_mono', label: '単色彫刻(型押し・1色のみ色入れ)', checkType: 'material', minWidthMm: 0.5,
+          note: '彫刻(凹)の細い線・文字の最小幅です。これより細い部分は、実際には線どうしがつながって太い塊になり、デザインより黒色部分が広くなります。対応素材: 真鍮・ステンレス・鉄。' },
+        { id: 'enamel_etch', label: '凸凹色入れ有り(エッチング加工・2色以上)', checkType: 'wall', minWidthMm: 0.3,
+          note: '色と色の間の仕切り(陽線、金属色の凸)の最小幅です。型押しより細かい表現が可能ですが、凹みは浅くなります。対応素材: 真鍮・ステンレスのみ。' },
+        { id: 'enamel_press', label: '凸凹色入れ有り(型押し加工・2色以上)', checkType: 'wall', minWidthMm: 0.5,
+          note: '色と色の間の仕切り(陽線、金属色の凸)の最小幅です。エッチングより凹みを深くできますが、表現できる細かさはやや劣ります。対応素材: 真鍮・ステンレス・鉄。' },
+        { id: 'solid_nocolor', label: '凸凹色入れ無し(立体・メッキ1色)', checkType: 'material', minWidthMm: 0.5,
+          note: '立体的な凸凹(模様等)はあるが、色分けはせずメッキ仕上げ一色のみにする場合の、突起・凹みの最小幅の目安です。⑥の仕切り線プレビューでは、製品全体がそのまま指定した金属色(シルバー等)で表示されます。' },
+        { id: 'plain', label: '色入れ無し(金属素地のまま)', checkType: 'material', minWidthMm: 0.5, note: '彫刻・凹凸の最小幅の目安です。' },
+        { id: 'print', label: '印刷', checkType: 'material', minWidthMm: 0.3, note: '印刷なので仕切りは不要です。印刷可能な最小の線幅の目安です。' }
+      ]
+    },
+    {
+      id: 'surfacefinish', name: '表面加工(共通・製法を問わず使える仕上げ)', note: '立体物の一部だけに、別の仕上げ方法を使う場合(例: ロゴだけ印刷、模様だけ転写シール)に選んでください。', colorMode: 'brush',
+      variants: [
+        { id: 'transfer_decal', label: '転写シール(デカール)', checkType: 'material', minWidthMm: 0.2,
+          note: '薄いシートを貼るだけの加工です。印刷に近く、厚みは持ちません。これより細い線・模様はシール自体の印刷解像度で潰れる可能性があります。' },
+        { id: 'hand_paint', label: '筆による彩色(手描き)', checkType: 'material', minWidthMm: 0.8,
+          note: '職人が筆で塗り分ける想定の最小幅の目安です。人の手作業のため、量産では個体差が出やすい点にご注意ください。' },
+        { id: 'print_general', label: '印刷(汎用)', checkType: 'material', minWidthMm: 0.3, note: '印刷可能な最小の線幅の目安です。' }
+      ]
+    },
+    {
+      id: 'softpvc', name: 'ソフトPVC', note: '色を流し込む場合、色と色の間には金型側の仕切り(0.5mm)が必ず必要です。金型側が凸のため、成形品の表面ではその部分が逆に凹になります。', colorMode: 'flow',
+      variants: [
+        { id: 'front2d', label: '表面：平面2D(色流し込み)', checkType: 'wall', minWidthMm: 0.5, note: '色と色の間の仕切り(成形品では凹)の最小幅です。' },
+        { id: 'front3d', label: '表面：半立体3D(色流し込み)', checkType: 'wall', minWidthMm: 0.5, note: '色と色の間の仕切り(成形品では凹)の最小幅です。立体的な盛り上がり自体の最小幅は別途ご確認ください。' },
+        { id: 'back2d', label: '裏面：2D(色流し込み)', checkType: 'wall', minWidthMm: 0.5, note: '色と色の間の仕切り(成形品では凹)の最小幅です。' },
+        { id: 'back3d', label: '裏面：3D(色流し込み)', checkType: 'wall', minWidthMm: 0.5, note: '色と色の間の仕切り(成形品では凹)の最小幅です。' },
+        { id: 'frontprint', label: '表面：印刷', checkType: 'material', minWidthMm: 0.3, note: '印刷なので仕切りは不要です。' },
+        { id: 'backprint', label: '裏面：印刷', checkType: 'material', minWidthMm: 0.3, note: '印刷なので仕切りは不要です。' }
+      ]
+    }
+  ];
+
+  function populateMethodSelectEl(sel, prevMethodId) {
+    sel.innerHTML = '';
+    PRODUCTION_METHODS.forEach(function(m) {
+      const opt = document.createElement('option');
+      opt.value = m.id; opt.textContent = m.name;
+      sel.appendChild(opt);
+    });
+    if (PRODUCTION_METHODS.some(m => m.id === prevMethodId)) sel.value = prevMethodId;
+  }
+  function getMethod(id) { return PRODUCTION_METHODS.find(m => m.id === id); }
+  function getVariant(methodId, variantId) {
+    const m = getMethod(methodId);
+    if (!m) return null;
+    return m.variants.find(v => v.id === variantId) || m.variants[0];
+  }
+
+  // ── ① 製法(全画像に共通で適用する、ただ1つの選択) ──
+  function getCurrentGlobalMethod() {
+    const sel = document.getElementById('globalMethodSelect');
+    return sel ? getMethod(sel.value) : PRODUCTION_METHODS[0];
+  }
+  function refreshGlobalMethodSelect() {
+    const sel = document.getElementById('globalMethodSelect');
+    const prev = sel.value;
+    populateMethodSelectEl(sel, prev || PRODUCTION_METHODS[0].id);
+    document.getElementById('globalMethodNote').textContent = getCurrentGlobalMethod().note || '';
+  }
+  // 製法を切り替えたら、読み込み済みの全画像を新しい製法に揃える。
+  // バリエーションは、同じidが新しい製法にもあればそれを維持し、無ければ先頭のバリエーションにする。
+  // 製法・バリエーションを変更したときのリセット：写真(と実寸・名前)だけ残し、
+  // 解析結果・仕切りプレビュー・③の色の指定・解析範囲を初期状態に戻す(⑤のパレットは残す)。
+  // syncWallWidthMm: 指定があれば、⑥⑧で使う「仕切りの太さ(mm)」を、②の「最小再現幅(mm)」と
+  // 同じ値に揃える。この2つは本来どちらも同じ「仕切り(陽線)の幅」を指しており、ずれていると
+  // ①②のチェックと⑥⑧の生成イメージで前提の太さが変わってしまうため、仕様が変わるたびに合わせておく。
+  function resetForSpecChange(syncWallWidthMm) {
+    if (isFinite(syncWallWidthMm) && syncWallWidthMm > 0) {
+      const wgw = document.getElementById('wallGenWidth');
+      if (wgw) wgw.value = syncWallWidthMm;
+    }
+    pickingMode = null;
+    paletteMode = false;
+    document.querySelectorAll('.view-canvas').forEach(c => c.classList.remove('crosshair'));
+    ['resinPickBtn', 'metalPickBtn', 'palettePickBtn'].forEach(function(id) {
+      const b = document.getElementById(id); if (b) b.classList.remove('picking');
+    });
+    const pb = document.getElementById('palettePickBtn');
+    if (pb) pb.textContent = '🎨 画像をクリックして色を追加';
+    const st = document.getElementById('statusMsg'); if (st) st.textContent = '';
+    hideColorMagnifier();
+    resinColor = null;
+    metalColor = null;
+    document.getElementById('resinSwatch').style.background = '#ffffff';
+    document.getElementById('resinSwatchLabel').textContent = '自動判定(透明 or ほぼ白)';
+    document.getElementById('metalSwatch').style.background = '#333333';
+    document.getElementById('metalSwatchLabel').textContent = '未指定';
+    // ⑤で登録した色(paletteColors)は、×で個別に削除・追加できるのでリセットしない
+    views.forEach(function(v) {
+      v.result = null; v.subViewResults = null;
+      v.wallGenResult = null; v.wallGenSubResults = null;
+      v.regions = []; v.roiMode = false;
+    });
+    renderResults();
+    renderWallGenResults();
+  }
+
+  function onGlobalMethodChange() {
+    const method = getCurrentGlobalMethod();
+    document.getElementById('globalMethodNote').textContent = method.note || '';
+    resetForSpecChange(method.variants[0] ? method.variants[0].minWidthMm : undefined);
+    // ソフトPVCは、金属の色入れとは凸凹が逆(型が凸のため成形品の表面は凹になる)なので、
+    // ⑥製品イメージ生成の仕上げの向きも自動的に「凹」にしておく。
+    const dirRadio = document.querySelector('input[name="wallGenDirection"][value="' + (method.id === 'softpvc' ? 'concave' : 'convex') + '"]');
+    if (dirRadio) dirRadio.checked = true;
+    views.forEach(function(v) {
+      const keepVariant = method.variants.find(vv => vv.id === v.variantId);
+      const variant = keepVariant || method.variants[0];
+      v.methodId = method.id;
+      v.variantId = variant.id;
+      v.minWidthMm = variant.minWidthMm;
+    });
+    renderViewList();
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  ② 画像アップロード(複数アングル、アングルごとに製法・範囲を持つ)
+  // ══════════════════════════════════════════════════════════════
+  function addView(initialLabel) {
+    const id = 'view' + (viewIdCounter++);
+    const defaultLabels = ['表面', '裏面', '側面'];
+    const label = initialLabel || defaultLabels[views.length] || ('画像' + (views.length + 1));
+    const defaultMethod = getCurrentGlobalMethod() || PRODUCTION_METHODS[0];
+    const defaultVariant = defaultMethod.variants[0];
+    views.push({
+      id, label, img: null,
+      workCanvas: null, workCtx: null, workW: 0, workH: 0, scaleToOriginal: 1,
+      axis: 'width', sizeMm: 40,
+      methodId: defaultMethod.id, variantId: defaultVariant.id, minWidthMm: defaultVariant.minWidthMm,
+      regions: [], roiMode: false, autoLargestComponent: true,
+      result: null, subViewResults: null,
+      wallGenResult: null, wallGenSubResults: null
+    });
+    renderViewList();
+    updateAnalyzeButtonState();
+  }
+  function removeView(id) {
+    views = views.filter(v => v.id !== id);
+    renderViewList();
+    updateAnalyzeButtonState();
+    renderResults();
+  }
+  function findView(id) { return views.find(v => v.id === id); }
+
+  function renderViewList() {
+    const wrap = document.getElementById('viewList');
+    wrap.innerHTML = '';
+    views.forEach(function(v) {
+      const row = document.createElement('div');
+      row.className = 'view-row';
+
+      const head = document.createElement('div');
+      head.className = 'view-row-head';
+      const labelInput = document.createElement('input');
+      labelInput.type = 'text'; labelInput.value = v.label;
+      labelInput.addEventListener('input', function() { v.label = labelInput.value; renderResults(); });
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button'; delBtn.className = 'view-del-btn'; delBtn.textContent = '×';
+      delBtn.addEventListener('click', function() { removeView(v.id); });
+      head.appendChild(labelInput); head.appendChild(delBtn);
+      row.appendChild(head);
+
+      if (!v.img) {
+        const dz = document.createElement('div');
+        dz.className = 'view-dropzone';
+        dz.textContent = 'クリックして画像を選択(JPEG/PNG/SVG)';
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file'; fileInput.accept = 'image/*'; fileInput.style.display = 'none';
+        fileInput.addEventListener('change', function(e) { handleViewFileSelect(v.id, e); });
+        dz.addEventListener('click', function() { fileInput.click(); });
+        row.appendChild(dz); row.appendChild(fileInput);
+        wrap.appendChild(row);
+        return;
+      }
+
+      // ── プレビュー(範囲選択・スポイト対応キャンバス) ──
+      const canvasWrap = document.createElement('div');
+      canvasWrap.className = 'view-canvas-wrap';
+      const canvas = document.createElement('canvas');
+      canvas.className = 'view-canvas';
+      canvas.width = v.workW; canvas.height = v.workH;
+      canvasWrap.appendChild(canvas);
+      row.appendChild(canvasWrap);
+      drawViewPreview(v, canvas, null);
+      attachCanvasInteraction(v, canvas);
+
+      const info = document.createElement('div');
+      info.className = 'view-file-info';
+      info.textContent = v.img.naturalWidth + '×' + v.img.naturalHeight + 'px';
+      row.appendChild(info);
+
+      // ── 解析範囲(ROI)コントロール ──
+      const roiRow = document.createElement('div');
+      roiRow.className = 'view-roi-row';
+      const roiBtnRow = document.createElement('div');
+      roiBtnRow.className = 'btn-row';
+      const roiToggleBtn = document.createElement('button');
+      roiToggleBtn.type = 'button';
+      roiToggleBtn.className = 'btn btn-outline btn-sm' + (v.roiMode ? ' active' : '');
+      roiToggleBtn.textContent = v.roiMode ? '🔲 範囲指定を終了' : '🔲 解析範囲を指定';
+      roiToggleBtn.addEventListener('click', function() {
+        pickingMode = null;
+        paletteMode = false;
+        const pBtn = document.getElementById('palettePickBtn');
+        if (pBtn) { pBtn.classList.remove('picking'); pBtn.textContent = '🎨 画像をクリックして色を追加'; }
+        document.querySelectorAll('.view-canvas').forEach(c => c.classList.remove('crosshair'));
+        v.roiMode = !v.roiMode;
+        renderViewList();
+      });
+      const roiClearBtn = document.createElement('button');
+      roiClearBtn.type = 'button';
+      roiClearBtn.className = 'btn btn-outline btn-sm';
+      roiClearBtn.textContent = '範囲をクリア(全体を対象に)';
+      roiClearBtn.disabled = !v.regions.length;
+      roiClearBtn.addEventListener('click', function() { v.regions = []; renderViewList(); });
+      roiBtnRow.appendChild(roiToggleBtn);
+      roiBtnRow.appendChild(roiClearBtn);
+      roiRow.appendChild(roiBtnRow);
+      const roiNote = document.createElement('p');
+      roiNote.className = 'view-roi-note';
+      if (v.regions.length >= 2) {
+        roiNote.textContent = '2つ以上の範囲があるため、それぞれ別の面(表面/裏面など)として個別に解析・レポートします。名前を編集できます。';
+      } else if (v.regions.length === 1) {
+        roiNote.textContent = '指定済みの範囲: 1個(この中だけを解析します。金具や指示テキストなど不要な部分は範囲の外に置いてください)';
+      } else {
+        roiNote.textContent = 'ドラッグで四角を描くと、その中だけが解析対象になります。2個以上描くと、それぞれ別の面として個別に解析されます(表面/裏面や6面図など)。';
+      }
+      roiRow.appendChild(roiNote);
+
+      if (v.regions.length >= 2) {
+        const regionListEl = document.createElement('div');
+        regionListEl.style.cssText = 'display:flex; flex-direction:column; gap:6px; margin-top:6px;';
+        v.regions.forEach(function(r, ri) {
+          const regRow = document.createElement('div');
+          regRow.style.cssText = 'display:flex; align-items:center; gap:6px;';
+          const swatchNum = document.createElement('span');
+          swatchNum.style.cssText = 'font-size:11px; color:var(--roi); font-weight:700; flex-shrink:0;';
+          swatchNum.textContent = '□' + (ri + 1);
+          const labelInput = document.createElement('input');
+          labelInput.type = 'text';
+          labelInput.value = r.label || ('面' + (ri + 1));
+          labelInput.placeholder = '面の名前(例: 表面)';
+          labelInput.style.cssText = 'flex:1; padding:5px 8px; font-size:12px;';
+          labelInput.addEventListener('input', function() { r.label = labelInput.value; });
+          const delRegBtn = document.createElement('button');
+          delRegBtn.type = 'button';
+          delRegBtn.className = 'view-del-btn';
+          delRegBtn.style.cssText = 'width:26px; height:26px; font-size:12px;';
+          delRegBtn.textContent = '×';
+          delRegBtn.addEventListener('click', function() { v.regions.splice(ri, 1); renderViewList(); });
+          regRow.appendChild(swatchNum);
+          regRow.appendChild(labelInput);
+          regRow.appendChild(delRegBtn);
+          regionListEl.appendChild(regRow);
+        });
+        roiRow.appendChild(regionListEl);
+      }
+
+      if (!v.regions.length) {
+        const autoLabel = document.createElement('label');
+        autoLabel.style.cssText = 'display:flex; align-items:center; gap:6px; font-size:11px; color:var(--ink-soft); margin-top:6px; cursor:pointer;';
+        const autoCheckbox = document.createElement('input');
+        autoCheckbox.type = 'checkbox';
+        autoCheckbox.checked = v.autoLargestComponent;
+        autoCheckbox.addEventListener('change', function() { v.autoLargestComponent = autoCheckbox.checked; });
+        autoLabel.appendChild(autoCheckbox);
+        autoLabel.appendChild(document.createTextNode('自動的に一番大きなかたまりだけを解析する(寸法線・カラーコードの文字・トリムマークなどを自動除外)'));
+        roiRow.appendChild(autoLabel);
+      }
+      row.appendChild(roiRow);
+
+      // ── 実寸 ──
+      const sizeRow = document.createElement('div');
+      sizeRow.className = 'view-size-row';
+      const axisSel = document.createElement('select');
+      axisSel.innerHTML = '<option value="width">横幅</option><option value="height">縦幅</option>';
+      axisSel.value = v.axis;
+      axisSel.addEventListener('change', function() { v.axis = axisSel.value; });
+      const sizeInput = document.createElement('input');
+      sizeInput.type = 'number'; sizeInput.min = '1'; sizeInput.step = '0.1'; sizeInput.value = v.sizeMm;
+      sizeInput.addEventListener('input', function() { v.sizeMm = parseFloat(sizeInput.value) || 0; });
+      const mmLabel = document.createElement('span'); mmLabel.textContent = 'mm(実寸)';
+      sizeRow.appendChild(axisSel); sizeRow.appendChild(sizeInput); sizeRow.appendChild(mmLabel);
+      row.appendChild(sizeRow);
+
+      // ── このアングルのバリエーション(製法は②のグローバル選択に従う) ──
+      const methodRow = document.createElement('div');
+      methodRow.className = 'view-method-row';
+      const variantLabelEl = document.createElement('label');
+      variantLabelEl.style.cssText = 'font-size:11px; color:var(--ink-soft); margin-bottom:2px; display:block;';
+      variantLabelEl.textContent = 'バリエーション';
+      const variantSel = document.createElement('select');
+      const globalMethod = getCurrentGlobalMethod();
+      v.methodId = globalMethod.id; // ①で選ばれている製法に常に揃える
+      (globalMethod.variants || []).forEach(function(vv) {
+        const opt = document.createElement('option');
+        opt.value = vv.id; opt.textContent = vv.label;
+        variantSel.appendChild(opt);
+      });
+      if (globalMethod.variants.some(vv => vv.id === v.variantId)) variantSel.value = v.variantId;
+      else { v.variantId = globalMethod.variants[0].id; v.minWidthMm = globalMethod.variants[0].minWidthMm; }
+      variantSel.addEventListener('change', function() {
+        v.variantId = variantSel.value;
+        const variant = getVariant(v.methodId, v.variantId);
+        v.minWidthMm = variant ? variant.minWidthMm : v.minWidthMm;
+        minWidthInputEl.value = v.minWidthMm;
+        variantNote.textContent = variant ? variant.note : '';
+        resetForSpecChange(variant ? variant.minWidthMm : undefined);
+        renderViewList();
+      });
+      methodRow.appendChild(variantLabelEl);
+      methodRow.appendChild(variantSel);
+      row.appendChild(methodRow);
+
+      const variantNote = document.createElement('p');
+      variantNote.className = 'hint';
+      const curVariant = getVariant(v.methodId, v.variantId);
+      variantNote.textContent = curVariant ? curVariant.note : '';
+      row.appendChild(variantNote);
+
+      const minWidthRow = document.createElement('div');
+      minWidthRow.className = 'view-minwidth-row';
+      const minWidthInputEl = document.createElement('input');
+      minWidthInputEl.type = 'number'; minWidthInputEl.min = '0.05'; minWidthInputEl.step = '0.05';
+      minWidthInputEl.value = v.minWidthMm;
+      minWidthInputEl.addEventListener('input', function() { v.minWidthMm = parseFloat(minWidthInputEl.value) || 0; });
+      const minWidthLabel = document.createElement('span'); minWidthLabel.textContent = 'mm(最小再現幅)';
+      minWidthRow.appendChild(minWidthInputEl); minWidthRow.appendChild(minWidthLabel);
+      row.appendChild(minWidthRow);
+
+      const changeBtn = document.createElement('button');
+      changeBtn.type = 'button'; changeBtn.className = 'btn btn-outline btn-sm'; changeBtn.style.marginTop = '10px';
+      changeBtn.textContent = '画像を変更';
+      const fileInput2 = document.createElement('input');
+      fileInput2.type = 'file'; fileInput2.accept = 'image/*'; fileInput2.style.display = 'none';
+      fileInput2.addEventListener('change', function(e) { handleViewFileSelect(v.id, e); });
+      changeBtn.addEventListener('click', function() { fileInput2.click(); });
+      row.appendChild(changeBtn); row.appendChild(fileInput2);
+
+      wrap.appendChild(row);
+    });
+    renderCaveats();
+  }
+
+  function handleViewFileSelect(viewId, e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const v = findView(viewId);
+    if (!v) return;
+    // SVGはベクター画像なので、ファイル自体が小さい解像度を宣言していても、解析用には
+    // 高い解像度でラスタライズ(ビットマップ化)し直すことで、JPEG/PNGよりきれいな輪郭で解析できる。
+    v.isVector = /svg/i.test(file.type) || /\.svg$/i.test(file.name);
+    const reader = new FileReader();
+    reader.onload = function(f) {
+      const img = new Image();
+      img.onload = function() {
+        v.img = img; v.result = null; v.regions = []; v.roiMode = false;
+        prepareWorkCanvas(v);
+        renderViewList();
+        updateAnalyzeButtonState();
+        renderResults();
+      };
+      img.onerror = function() {
+        document.getElementById('statusMsg').className = 'status err';
+        document.getElementById('statusMsg').textContent = '⚠️「' + v.label + '」の画像を読み込めませんでした。別のファイルをお試しください。';
+      };
+      img.src = f.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+  function prepareWorkCanvas(v) {
+    const naturalW = v.img.naturalWidth, naturalH = v.img.naturalHeight;
+    // SVG(ベクター)は拡大しても画質が落ちないので、小さく宣言されていても解析解像度まで拡大する。
+    // JPEG/PNG(ラスター)は、拡大してもにじむだけで精度は上がらないので、これまで通り縮小のみ行う。
+    v.scaleToOriginal = v.isVector
+      ? (VIEW_MAX_DIM / Math.max(naturalW, naturalH))
+      : Math.min(1, VIEW_MAX_DIM / Math.max(naturalW, naturalH));
+    v.workW = Math.max(1, Math.round(naturalW * v.scaleToOriginal));
+    v.workH = Math.max(1, Math.round(naturalH * v.scaleToOriginal));
+    v.workCanvas = document.createElement('canvas');
+    v.workCanvas.width = v.workW; v.workCanvas.height = v.workH;
+    v.workCtx = v.workCanvas.getContext('2d');
+    v.workCtx.drawImage(v.img, 0, 0, v.workW, v.workH);
+  }
+
+  function updateAnalyzeButtonState() {
+    document.getElementById('analyzeBtn').disabled = !views.some(v => v.img);
+  }
+
+  // ── プレビュー描画(既存の範囲＋ドラッグ中の仮の範囲を重ねて描く) ──
+  function drawViewPreview(v, canvas, draftRect) {
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, v.workW, v.workH);
+    ctx.drawImage(v.workCanvas, 0, 0);
+    ctx.save();
+    ctx.strokeStyle = '#1a56db';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 4]);
+    ctx.fillStyle = 'rgba(26,86,219,0.08)';
+    v.regions.forEach(function(r, ri) {
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.strokeRect(r.x, r.y, r.w, r.h);
+      if (v.regions.length >= 2) {
+        ctx.save();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#1a56db';
+        ctx.font = 'bold 14px sans-serif';
+        ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+        ctx.fillText('□' + (ri + 1), r.x + 4, r.y + 4);
+        ctx.restore();
+      }
+    });
+    if (draftRect) {
+      ctx.strokeStyle = '#e2802e';
+      ctx.fillStyle = 'rgba(226,128,46,0.10)';
+      ctx.fillRect(draftRect.x, draftRect.y, draftRect.w, draftRect.h);
+      ctx.strokeRect(draftRect.x, draftRect.y, draftRect.w, draftRect.h);
+    }
+    ctx.restore();
+  }
+
+  // ── キャンバス操作：スポイト(色指定) と 範囲選択(ROI)を1つのcanvasで両立させる ──
+  function attachCanvasInteraction(v, canvas) {
+    function toWorkCoord(e) {
+      const rect = canvas.getBoundingClientRect();
+      const cssScale = canvas.width / rect.width;
+      const x = Math.max(0, Math.min(v.workW - 1, Math.floor((e.clientX - rect.left) * cssScale)));
+      const y = Math.max(0, Math.min(v.workH - 1, Math.floor((e.clientY - rect.top) * cssScale)));
+      return { x, y };
+    }
+
+    if (v.roiMode) {
+      canvas.classList.add('roi-cursor');
+      let dragging = false, startPt = null;
+      canvas.addEventListener('mousedown', function(e) {
+        dragging = true;
+        startPt = toWorkCoord(e);
+      });
+      canvas.addEventListener('mousemove', function(e) {
+        if (!dragging) return;
+        const cur = toWorkCoord(e);
+        const rect = {
+          x: Math.min(startPt.x, cur.x), y: Math.min(startPt.y, cur.y),
+          w: Math.abs(cur.x - startPt.x), h: Math.abs(cur.y - startPt.y)
+        };
+        drawViewPreview(v, canvas, rect);
+      });
+      window.addEventListener('mouseup', function onUp(e) {
+        if (!dragging) return;
+        dragging = false;
+        const cur = toWorkCoord(e);
+        const rect = {
+          x: Math.min(startPt.x, cur.x), y: Math.min(startPt.y, cur.y),
+          w: Math.abs(cur.x - startPt.x), h: Math.abs(cur.y - startPt.y)
+        };
+        if (rect.w > 4 && rect.h > 4) {
+          v.regions.push(rect);
+          if (v.regions.length >= 2) {
+            // 2個目以降が追加された時点で「複数面モード」とみなし、まだ無名の領域にもデフォルトラベルを振る
+            v.regions.forEach(function(r, idx) { if (!r.label) r.label = '面' + (idx + 1); });
+          }
+          renderViewList();
+        } else {
+          drawViewPreview(v, canvas, null);
+        }
+      }, { once: false });
+      return;
+    }
+
+    canvas.addEventListener('mousemove', function(e) {
+      if (!pickingMode) return;
+      const p = toWorkCoord(e);
+      showColorMagnifier(v, e.clientX, e.clientY, p.x, p.y);
+    });
+    canvas.addEventListener('mouseleave', function() {
+      hideColorMagnifier();
+    });
+
+    canvas.addEventListener('click', function(e) {
+      if (!pickingMode) return;
+      const p = toWorkCoord(e);
+      const px = v.workCtx.getImageData(p.x, p.y, 1, 1).data;
+      const color = [px[0], px[1], px[2]];
+      const hex = '#' + [0, 1, 2].map(i => color[i].toString(16).padStart(2, '0')).join('');
+      if (pickingMode === 'resin') {
+        resinColor = color;
+        document.getElementById('resinSwatch').style.background = hex;
+        document.getElementById('resinSwatchLabel').textContent = '指定色 ' + hex;
+        document.getElementById('resinPickBtn').classList.remove('picking');
+        pickingMode = null;
+      } else if (pickingMode === 'metal') {
+        metalColor = color;
+        document.getElementById('metalSwatch').style.background = hex;
+        document.getElementById('metalSwatchLabel').textContent = '指定色 ' + hex;
+        document.getElementById('metalPickBtn').classList.remove('picking');
+        pickingMode = null;
+      } else if (pickingMode === 'palette') {
+        // パレット登録はクリックのたびに追加していく(色登録モードを終了するまで継続)
+        paletteColors.push({ rgb: color, asMetal: false });
+        renderPaletteList();
+        document.getElementById('statusMsg').textContent = '色を追加しました(' + paletteColors.length + '色)。続けてクリックするか、「色登録モードを終了」を押してください。';
+        return; // pickingModeは維持したままにする(継続してクリックできるように)
+      }
+      if (!pickingMode) {
+        document.querySelectorAll('.view-canvas').forEach(c => c.classList.remove('crosshair'));
+        document.getElementById('statusMsg').textContent = '';
+        hideColorMagnifier();
+      }
+    });
+  }
+
+  // ── 色を拾うとき、画像が小さくて狙いづらいので、カーソル位置を拡大して見せるルーペ ──
+  let magnifierEl = null, magnifierCanvas = null, magnifierReadout = null;
+  const MAGNIFIER_SRC_PX = 15;   // カーソル中心から何px四方を拡大するか(作業用キャンバス座標)
+  const MAGNIFIER_SCALE = 9;     // 拡大倍率
+  function ensureMagnifier() {
+    if (magnifierEl) return;
+    magnifierEl = document.createElement('div');
+    magnifierEl.id = 'colorMagnifier';
+    magnifierCanvas = document.createElement('canvas');
+    const dim = MAGNIFIER_SRC_PX * MAGNIFIER_SCALE;
+    magnifierCanvas.width = dim; magnifierCanvas.height = dim;
+    magnifierReadout = document.createElement('div');
+    magnifierReadout.className = 'mag-readout';
+    magnifierEl.appendChild(magnifierCanvas);
+    magnifierEl.appendChild(magnifierReadout);
+    document.body.appendChild(magnifierEl);
+  }
+  function showColorMagnifier(v, clientX, clientY, workX, workY) {
+    ensureMagnifier();
+    const half = (MAGNIFIER_SRC_PX - 1) / 2;
+    const sx = Math.max(0, Math.min(v.workW - MAGNIFIER_SRC_PX, Math.round(workX - half)));
+    const sy = Math.max(0, Math.min(v.workH - MAGNIFIER_SRC_PX, Math.round(workY - half)));
+    const sw = Math.min(MAGNIFIER_SRC_PX, v.workW - sx);
+    const sh = Math.min(MAGNIFIER_SRC_PX, v.workH - sy);
+    const ctx = magnifierCanvas.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, magnifierCanvas.width, magnifierCanvas.height);
+    ctx.drawImage(v.workCanvas, sx, sy, sw, sh, 0, 0, sw * MAGNIFIER_SCALE, sh * MAGNIFIER_SCALE);
+    // 中央(=実際にクリックで拾われる画素)を枠で強調表示
+    const cellX = (workX - sx) * MAGNIFIER_SCALE, cellY = (workY - sy) * MAGNIFIER_SCALE;
+    ctx.strokeStyle = '#ff2d55'; ctx.lineWidth = 2;
+    ctx.strokeRect(cellX + 1, cellY + 1, MAGNIFIER_SCALE - 2, MAGNIFIER_SCALE - 2);
+    // 読み取り値の表示
+    const px = v.workCtx.getImageData(workX, workY, 1, 1).data;
+    const hex = '#' + [0, 1, 2].map(i => px[i].toString(16).padStart(2, '0')).join('');
+    magnifierReadout.textContent = hex + '  (' + px[0] + ',' + px[1] + ',' + px[2] + ')';
+    // カーソルに重ならないよう右下にオフセットしつつ、画面端では自動的に反対側へ
+    const dim = MAGNIFIER_SRC_PX * MAGNIFIER_SCALE;
+    const margin = 18;
+    let left = clientX + margin, top = clientY + margin;
+    if (left + dim > window.innerWidth) left = clientX - margin - dim;
+    if (top + dim + 24 > window.innerHeight) top = clientY - margin - dim - 24;
+    magnifierEl.style.left = left + 'px';
+    magnifierEl.style.top = top + 'px';
+    magnifierEl.style.display = 'block';
+  }
+  function hideColorMagnifier() {
+    if (magnifierEl) magnifierEl.style.display = 'none';
+  }
+
+  function startPicking(kind) {
+    if (!views.some(v => v.img)) return;
+    views.forEach(v => { v.roiMode = false; });
+    paletteMode = false;
+    document.getElementById('palettePickBtn').classList.remove('picking');
+    document.getElementById('palettePickBtn').textContent = '🎨 画像をクリックして色を追加';
+    pickingMode = kind;
+    renderViewList();
+    document.querySelectorAll('.view-canvas').forEach(c => c.classList.add('crosshair'));
+    document.getElementById(kind === 'resin' ? 'resinPickBtn' : 'metalPickBtn').classList.add('picking');
+    document.getElementById('statusMsg').className = 'status';
+    document.getElementById('statusMsg').textContent = 'いずれかの画像内の対象の色をクリックしてください。';
+  }
+
+  // ── ⑤ デザインの色を登録する(パレット) ──
+  function togglePaletteMode() {
+    if (!views.some(v => v.img)) return;
+    paletteMode = !paletteMode;
+    if (paletteMode) {
+      pickingMode = 'palette';
+      document.querySelectorAll('.view-canvas').forEach(c => c.classList.add('crosshair'));
+      document.getElementById('palettePickBtn').classList.add('picking');
+      document.getElementById('palettePickBtn').textContent = '色登録モードを終了';
+      document.getElementById('statusMsg').className = 'status';
+      document.getElementById('statusMsg').textContent = '画像内の色を順番にクリックして登録してください。終わったら「色登録モードを終了」を押してください。';
+    } else {
+      pickingMode = null;
+      document.querySelectorAll('.view-canvas').forEach(c => c.classList.remove('crosshair'));
+      document.getElementById('palettePickBtn').classList.remove('picking');
+      document.getElementById('palettePickBtn').textContent = '🎨 画像をクリックして色を追加';
+      document.getElementById('statusMsg').textContent = '';
+      hideColorMagnifier();
+    }
+  }
+  function removePaletteColor(idx) {
+    paletteColors.splice(idx, 1);
+    renderPaletteList();
+  }
+  function clearPalette() {
+    paletteColors = [];
+    renderPaletteList();
+  }
+  function renderPaletteList() {
+    const wrap = document.getElementById('paletteList');
+    if (!paletteColors.length) {
+      wrap.innerHTML = '<p class="palette-empty-note">まだ色が登録されていません。</p>';
+      return;
+    }
+    const list = document.createElement('div');
+    list.className = 'palette-swatch-list';
+    paletteColors.forEach(function(c, i) {
+      const hex = '#' + c.rgb.map(v => v.toString(16).padStart(2, '0')).join('');
+      const item = document.createElement('div');
+      item.className = 'palette-swatch-item';
+      item.innerHTML = '<span class="palette-swatch-dot" style="background:' + hex + ';"></span>'
+        + '<span>' + hex + '</span>'
+        + '<label class="palette-metal-toggle"><input type="checkbox"' + (c.asMetal ? ' checked' : '') + '> 凸(金属)にする</label>'
+        + '<button type="button" class="palette-swatch-del" title="削除">×</button>';
+      item.querySelector('input[type="checkbox"]').addEventListener('change', function(e) { c.asMetal = e.target.checked; });
+      item.querySelector('.palette-swatch-del').addEventListener('click', function() { removePaletteColor(i); });
+      list.appendChild(item);
+    });
+    wrap.innerHTML = '';
+    wrap.appendChild(list);
+  }
+  renderPaletteList();
+
+  refreshGlobalMethodSelect();
+  addView('表面');
+
+  // ══════════════════════════════════════════════════════════════
+  //  ⑦ 製法の追加・管理
+  // ══════════════════════════════════════════════════════════════
+  let newMethodVariants = [{ label: '', checkType: 'material', minWidthMm: 1.0, note: '' }];
+  function toggleMethodManager() {
+    const body = document.getElementById('methodManagerBody');
+    const icon = document.getElementById('methodManagerToggleIcon');
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : 'block';
+    icon.textContent = open ? '▸' : '▾';
+    if (!open) renderVariantRows();
+  }
+  function addVariantRow() {
+    syncVariantRowsFromDOM();
+    newMethodVariants.push({ label: '', checkType: 'material', minWidthMm: 1.0, note: '' });
+    renderVariantRows();
+  }
+  function removeVariantRow(idx) {
+    syncVariantRowsFromDOM();
+    newMethodVariants.splice(idx, 1);
+    if (!newMethodVariants.length) newMethodVariants.push({ label: '', checkType: 'material', minWidthMm: 1.0, note: '' });
+    renderVariantRows();
+  }
+  function syncVariantRowsFromDOM() {
+    const rows = document.querySelectorAll('#newVariantRows .variant-row');
+    rows.forEach(function(row, i) {
+      if (!newMethodVariants[i]) return;
+      newMethodVariants[i].label = row.querySelector('.v-label').value;
+      newMethodVariants[i].checkType = row.querySelector('.v-checktype').value;
+      newMethodVariants[i].minWidthMm = parseFloat(row.querySelector('.v-minwidth').value) || 0;
+      newMethodVariants[i].note = row.querySelector('.v-note').value;
+    });
+  }
+  function renderVariantRows() {
+    const wrap = document.getElementById('newVariantRows');
+    wrap.innerHTML = '<div class="variant-row-labels"><span>バリエーション名</span><span>判定方式</span><span>最小幅mm</span><span></span></div>';
+    newMethodVariants.forEach(function(v, i) {
+      const row = document.createElement('div');
+      row.className = 'variant-row';
+      row.innerHTML =
+        '<input class="v-label" type="text" placeholder="例: 立体成形" value="' + (v.label || '').replace(/"/g, '&quot;') + '">'
+        + '<select class="v-checktype">'
+        + '<option value="material"' + (v.checkType === 'material' ? ' selected' : '') + '>材料の最小幅</option>'
+        + '<option value="wall"' + (v.checkType === 'wall' ? ' selected' : '') + '>仕切り線の最小幅</option>'
+        + '</select>'
+        + '<input class="v-minwidth" type="number" step="0.05" min="0.05" value="' + v.minWidthMm + '">'
+        + '<button type="button" class="del-btn" onclick="removeVariantRow(' + i + ')">×</button>'
+        + '<input class="v-note" type="text" placeholder="メモ(任意、表示ヒントになります)" style="grid-column: 1 / -1;" value="' + (v.note || '').replace(/"/g, '&quot;') + '">';
+      wrap.appendChild(row);
+    });
+  }
+  function saveNewMethod() {
+    const name = document.getElementById('newMethodName').value.trim();
+    if (!name) { alert('製法名を入力してください。'); return; }
+    syncVariantRowsFromDOM();
+    const cleanVariants = newMethodVariants.filter(v => v.label.trim() !== '');
+    if (!cleanVariants.length) { alert('バリエーション名を1つ以上入力してください。'); return; }
+    const id = 'custom_' + Date.now();
+    const note = document.getElementById('newMethodNote').value.trim();
+    PRODUCTION_METHODS.push({
+      id, name, note,
+      variants: cleanVariants.map(function(v, i) {
+        return { id: 'v' + i, label: v.label.trim(), checkType: v.checkType, minWidthMm: v.minWidthMm || 1.0, note: v.note.trim() };
+      })
+    });
+    document.getElementById('newMethodName').value = '';
+    document.getElementById('newMethodNote').value = '';
+    newMethodVariants = [{ label: '', checkType: 'material', minWidthMm: 1.0, note: '' }];
+    renderVariantRows();
+    refreshGlobalMethodSelect();
+    document.getElementById('globalMethodSelect').value = id;
+    onGlobalMethodChange();
+    document.getElementById('statusMsg').className = 'status ok';
+    document.getElementById('statusMsg').textContent = '✅ 製法「' + name + '」を追加しました。①で選択されています。';
+  }
+  function exportMethods() {
+    const blob = new Blob([JSON.stringify(PRODUCTION_METHODS, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'production_methods.json'; a.click();
+    URL.revokeObjectURL(url);
+  }
+  function importMethods(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(f) {
+      try {
+        const data = JSON.parse(f.target.result);
+        if (!Array.isArray(data) || !data.every(m => m.id && m.name && Array.isArray(m.variants))) {
+          throw new Error('ファイルの形式が正しくありません。');
+        }
+        PRODUCTION_METHODS = data;
+        refreshGlobalMethodSelect();
+        onGlobalMethodChange();
+        document.getElementById('statusMsg').className = 'status ok';
+        document.getElementById('statusMsg').textContent = '✅ 製法一覧を読み込みました(' + data.length + '件)。';
+      } catch (err) {
+        alert('⚠️ 読み込みに失敗しました: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  注意事項(現在使われている製法をもとに動的に組み立てる)
+  // ══════════════════════════════════════════════════════════════
+  function renderCaveats() {
+    const list = document.getElementById('caveatList');
+    const usedMethodIds = new Set(views.filter(v => v.img).map(v => v.methodId));
+    if (!usedMethodIds.size) usedMethodIds.add(PRODUCTION_METHODS[0].id);
+    document.getElementById('metalFinishCard').style.display = usedMethodIds.has('metalplate') ? 'block' : 'none';
+
+    const items = [];
+    items.push('<b>できること:</b> 読み込んだ各アングル(表面・裏面・側面など)について、指定した範囲内の線や仕切りの太さが最小幅を下回っていないか、それぞれ個別に機械的にチェックします。');
+    items.push('<b>できないこと(重要):</b> 複数アングルの画像を追加しても、それは別々の2D画像であり、1つの立体データではありません。「型から抜けるか(アンダーカット)」「側面と背面の厚みの整合性」「実際の強度」は判定できません。');
+    items.push('範囲選択で除外した部分(金具などの既製部品、サイズ指示・コメントなどのテキスト、ダイカットの指示線など)は解析対象外です。範囲を指定し忘れると、それらも「細い線」として誤検出される場合があります。');
+
+    if (usedMethodIds.has('polystone')) {
+      items.push('<b>ポリストーン(シリコン型)について:</b> シリコン型は柔らかいため、多少のアンダーカットがあっても型を伸ばして抜くことができます。ただし勾配が強すぎる・彫り込みが深すぎると、抜くときに<b>型が裂けてしまう</b>ことがあります。硬い金型のように「絶対に抜けない」というより「無理をすると型が壊れる」という考え方に近いです。');
+      items.push('<b>透明素材・多層表現について:</b> 透明樹脂で成形した上から彩色すると、塗った色は常に「表面」に乗るため、透明な層の<b>奥に別の色がある</b>ような表現(例: 透明な白身の下に見える醤油や米)はそのままでは再現できません。この場合、色を塗った本体パーツと透明パーツを別々に成形して後から組み合わせる、といった多パーツ構成が必要になります。手間とコストは増えますが、このツールでは各パーツを別々の画像(または解析範囲)として個別にチェックしてください。');
+    }
+    if (usedMethodIds.has('surfacefinish')) {
+      items.push('<b>表面加工(転写シール・筆彩色・印刷)について:</b> これらは立体の成形とは別の後工程です。1つの製品の中で「ロゴだけ印刷」「模様だけ転写シール」「その他は筆彩色」のように工程を混在させる場合は、それぞれの部分を別々の解析範囲(または別画像)に分けて、対応する仕上げ方法を選んでチェックすると精度が上がります。筆彩色は人の手作業のため、量産時の個体差にもご注意ください。');
+    }
+    if (usedMethodIds.has('diecast')) {
+      items.push('<b>ダイキャストについて:</b> 立体成形はアンダーカットが基本的に抜けません。プレート成形は成形と同時に側面も仕上がりますが、型から抜きやすくするための勾配で断面がわずかに台形になります。');
+    }
+    if (usedMethodIds.has('metalplate')) {
+      const finishSel = document.getElementById('metalSideFinish');
+      const finish = finishSel ? finishSel.value : 'press';
+      items.push('<b>金属プレートについて:</b> 型押し／エッチングで凹凸をつけた後、最後に形状に打ち抜くプレス加工があり、'
+        + (finish === 'polished'
+          ? '側面磨き仕上げを選択されているので縦線は目立たなくなります(その分コストが上がる場合があります)。'
+          : 'そのままだと<b>側面に打ち抜きの縦線</b>が入ります(プレートが厚いほど目立ちます。気になる場合は側面磨き仕上げをご検討ください)。')
+        + 'エッチングは真鍮・ステンレスのみ対応、型押しは真鍮・ステンレス・鉄に対応可能です。');
+    }
+    if (usedMethodIds.has('softpvc')) {
+      items.push('<b>ソフトPVCについて:</b> 色を流し込む部分の仕切りは金型側が凸のため、成形品の表面では逆に<b>凹</b>になります(金属の色入れとは凹凸が逆です)。印刷の部分は仕切り不要です。');
+    }
+    if (views.some(v => v.img && getVariant(v.methodId, v.variantId) && getVariant(v.methodId, v.variantId).checkType === 'wall')) {
+      items.push('仕切り(壁)の判定を使っているアングルがあります。色の面積が極端に小さい(点状の)部分も色が流れ込みやすいため、仕切りの最小幅だけでなく色の面積が小さすぎないかも合わせてご確認ください。');
+    }
+    items.push('最終的な仕様の可否は、必ず加工会社・原型師にご確認ください。このツールはあくまで事前の目安・お客様への説明資料としてご利用ください。');
+
+    list.innerHTML = items.map(t => '<li>' + t + '</li>').join('');
+  }
+  renderCaveats();
+
+  // ══════════════════════════════════════════════════════════════
+  //  解析メイン(全アングルを、それぞれの製法・範囲でまとめて処理)
+  // ══════════════════════════════════════════════════════════════
+  function runAnalysis() {
+    const statusEl = document.getElementById('statusMsg');
+    const btn = document.getElementById('analyzeBtn');
+    const targets = views.filter(v => v.img);
+    if (!targets.length) return;
+
+    btn.disabled = true;
+    statusEl.className = 'status';
+    statusEl.textContent = '解析しています…';
+
+    setTimeout(function() {
+      try {
+        const tolerance = parseFloat(document.getElementById('toleranceInput').value);
+
+        targets.forEach(function(v) {
+          const variant = getVariant(v.methodId, v.variantId);
+          const method = getMethod(v.methodId);
+          v.result = null; v.subViewResults = null;
+          if (!variant || !method) { v.result = { error: '製法が選択されていません。' }; return; }
+          if (!isFinite(v.sizeMm) || v.sizeMm <= 0) { v.result = { error: '実寸(mm)を正しく入力してください。' }; return; }
+          if (!isFinite(v.minWidthMm) || v.minWidthMm <= 0) { v.result = { error: '最小再現幅(mm)を正しく入力してください。' }; return; }
+          const checkType = variant.checkType;
+          const mode = checkType === 'wall' ? 'metal' : 'resin';
+          if (mode === 'metal' && !metalColor) { v.result = { error: '仕切り線(陽線)の色が指定されていません。③で画像をクリックして指定してください。' }; return; }
+
+          const axisPx = v.axis === 'height' ? v.img.naturalHeight : v.img.naturalWidth;
+          const mmPerPxScaled = (v.sizeMm / axisPx) / v.scaleToOriginal; // 画像全体基準(6面図など複数領域の共通スケールに使用)
+          const imageData = v.workCtx.getImageData(0, 0, v.workW, v.workH);
+
+          // 1つの範囲(またはマスク)を解析して結果オブジェクトを返す共通処理。
+          // scaleForThisMask: このマスクに使うmm/px。実寸(mm)は「画像全体」ではなく
+          // 「実際に検出された中身(このマスクの外形)」の幅・高さに対応させるのが正しいため、
+          // 呼び出し側でマスクの外形(バウンディングボックス)から計算した値を渡す。
+          function analyzeRegionMask(mask, scaleForThisMask) {
+            const foregroundCount = mask.reduce((a, val) => a + val, 0);
+            if (foregroundCount < 10) {
+              return { error: mode === 'resin'
+                ? '指定範囲内で対象となる材料部分を検出できませんでした。背景色の指定や範囲を見直してください。'
+                : '指定範囲内で仕切り色に近い画素がほとんど見つかりませんでした。仕切り線の色や範囲を見直してください。' };
+            }
+            const minWidthWorkPxForThisMask = v.minWidthMm / scaleForThisMask;
+            const thickness = new Float32Array(v.workW * v.workH);
+            const { violation, distToBg } = detectThinRegions(mask, v.workW, v.workH, minWidthWorkPxForThisMask / 2);
+            for (let i = 0; i < v.workW * v.workH; i++) thickness[i] = distToBg[i] * 2;
+            const clusters = clusterViolations(violation, thickness, v.workW, v.workH);
+            return {
+              flag: violation, thickness, clusters, mode, minWidthMm: v.minWidthMm, mmPerPxScaled: scaleForThisMask,
+              methodId: method.id, methodName: method.name, variantLabel: variant.label, error: null
+            };
+          }
+
+          const baseMask = buildTargetMask(imageData, v.workW, v.workH, mode, mode === 'resin' ? resinColor : metalColor, tolerance, paletteColors);
+
+          if (v.regions.length >= 2) {
+            // 1枚の画像に表面・裏面や6面図など複数の面が含まれている場合：
+            // 各面は同じ1枚の写真の中の一部分なので、実寸(mm)は写真全体のpx数を基準にした
+            // 共通のスケールをそのまま使う(面ごとにバウンディングボックスで測り直すと、
+            // 面ごとの余白の差でスケールがバラバラになってしまうため)。
+            v.subViewResults = v.regions.map(function(r, ri) {
+              const mask = applyRegionMask(baseMask, v.workW, v.workH, [r]);
+              const result = analyzeRegionMask(mask, mmPerPxScaled);
+              return { label: r.label || ('面' + (ri + 1)), region: r, result };
+            });
+          } else {
+            let mask = baseMask;
+            if (v.regions.length === 1) {
+              mask = applyRegionMask(mask, v.workW, v.workH, v.regions);
+            } else if (v.autoLargestComponent) {
+              // 寸法線・カラーコードの文字・トリムマークなど、製品本体から離れた小さな要素を自動的に除外する
+              mask = extractLargestComponentMask(mask, v.workW, v.workH);
+            }
+            // 実寸(mm)は、画像全体(余白込み)ではなく、実際に検出された中身の幅・高さに対応させる。
+            const bbox = computeMaskBBoxPx(mask, v.workW, v.workH);
+            const contentAxisPx = v.axis === 'height' ? bbox.height : bbox.width;
+            const scaleForThisMask = contentAxisPx > 0 ? (v.sizeMm / contentAxisPx) : mmPerPxScaled;
+            v.result = analyzeRegionMask(mask, scaleForThisMask);
+          }
+        });
+
+        renderResults();
+        const allDone = [];
+        targets.forEach(function(v) {
+          if (v.subViewResults) v.subViewResults.forEach(sv => allDone.push(sv.result));
+          else if (v.result) allDone.push(v.result);
+        });
+        const errCount = allDone.filter(r => r.error).length;
+        statusEl.className = errCount ? 'status err' : 'status ok';
+        statusEl.textContent = errCount
+          ? '⚠️ ' + errCount + '件の面でエラーが発生しました(詳細は各カードをご確認ください)。'
+          : '✅ ' + allDone.length + '面を解析しました。';
+      } catch (err) {
+        console.error(err);
+        statusEl.className = 'status err';
+        statusEl.textContent = '⚠️ ' + err.message;
+      } finally {
+        btn.disabled = false;
+      }
+    }, 30);
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  結果表示
+  // ══════════════════════════════════════════════════════════════
+  // 1件の解析結果(v.result、またはv.subViewResultsの1要素)を1枚のカードとして描画する共通処理。
+  // outlineRegions: そのカードのキャンバスに青い破線で表示する範囲(単一面ならv.regions、複数面なら該当する1つの範囲のみ)
+  function buildResultCard(v, cardLabel, result, outlineRegions) {
+    const card = document.createElement('div');
+    card.className = 'card result-card';
+
+    if (result.error) {
+      card.innerHTML = '<div class="result-toolbar"><span>' + cardLabel + '</span></div><div class="empty-note">⚠️ ' + result.error + '</div>';
+      return card;
+    }
+
+    const toolbar = document.createElement('div');
+    toolbar.className = 'result-toolbar';
+    toolbar.innerHTML = '<span>' + cardLabel + '（' + result.methodName + ' / ' + result.variantLabel + '）</span>'
+      + '<label><input type="checkbox" checked> 問題箇所を赤で表示</label>';
+    const overlayCheckbox = toolbar.querySelector('input[type="checkbox"]');
+    card.appendChild(toolbar);
+
+    const canvasWrap = document.createElement('div');
+    canvasWrap.className = 'result-canvas-wrap';
+    const canvas = document.createElement('canvas');
+    canvas.className = 'result-canvas';
+    canvas.width = v.workW; canvas.height = v.workH;
+    canvasWrap.appendChild(canvas);
+    card.appendChild(canvasWrap);
+
+    function draw(highlightIndex) {
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(v.workCanvas, 0, 0);
+      if (outlineRegions && outlineRegions.length) {
+        ctx.save();
+        ctx.strokeStyle = '#1a56db'; ctx.setLineDash([5, 4]); ctx.lineWidth = 1.5;
+        outlineRegions.forEach(r => ctx.strokeRect(r.x, r.y, r.w, r.h));
+        ctx.restore();
+      }
+      const showOverlay = overlayCheckbox.checked;
+      if (showOverlay) {
+        const overlay = ctx.getImageData(0, 0, v.workW, v.workH);
+        const data = overlay.data;
+        for (let i = 0; i < v.workW * v.workH; i++) {
+          if (result.flag[i]) { data[i * 4] = 226; data[i * 4 + 1] = 46; data[i * 4 + 2] = 46; data[i * 4 + 3] = 235; }
+        }
+        ctx.putImageData(overlay, 0, 0);
+      }
+      ctx.font = 'bold 13px sans-serif';
+      result.clusters.forEach(function(c, i) {
+        const hi = (i === highlightIndex);
+        ctx.fillStyle = hi ? '#fff200' : '#ffffff';
+        ctx.strokeStyle = hi ? '#ff2d55' : '#b23b1d';
+        ctx.lineWidth = hi ? 3 : 1.5;
+        const radius = hi ? 14 : 9;
+        ctx.beginPath(); ctx.arc(c.cx, c.cy, radius, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = hi ? '#ff2d55' : '#b23b1d';
+        ctx.font = hi ? 'bold 15px sans-serif' : 'bold 13px sans-serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(String(i + 1), c.cx, c.cy + 1);
+        ctx.font = 'bold 13px sans-serif';
+      });
+    }
+    draw(null);
+    overlayCheckbox.addEventListener('change', function() { draw(null); });
+
+    const summary = document.createElement('div');
+    summary.className = 'summary-bar';
+    const okCount = result.clusters.length === 0;
+    summary.innerHTML =
+      '<div class="summary-chip ' + (okCount ? 'ok' : 'warn') + '"><b>' + result.clusters.length + '件</b>最小幅未満の箇所</div>'
+      + '<div class="summary-chip"><b>' + result.minWidthMm.toFixed(2) + 'mm</b>設定した最小再現幅</div>';
+    card.appendChild(summary);
+
+    // ポリストーン等(筆彩色)は、印刷・彩色の細かい模様(ロゴ等)が背景色(白等)と紛らわしく、
+    // 「材料が無い穴」として誤検出されることがある。パレット未登録・検出あり・材料モードのときに注意書きを出す。
+    if (result.mode === 'resin' && result.clusters.length > 0 && !paletteColors.length) {
+      const curMethodForNote = getMethod(result.methodId);
+      if (curMethodForNote && curMethodForNote.colorMode === 'brush') {
+        const note = document.createElement('div');
+        note.className = 'card empty-note';
+        note.style.marginBottom = '8px';
+        note.innerHTML = '💡 検出された箇所の中に、実際は<b>ロゴや模様など印刷・彩色の細かい柄</b>が、背景色(白など)と見分けがつかず誤って検出されているものが含まれている可能性があります。柄の色を⑤「デザインの色を登録する」に追加すると、その色は材料として扱われるようになり、誤検出を減らせます。<br>なお、彫刻や3D成形とは異なり、<b>印刷・彩色の柄そのものは型からの抜けやすさとは無関係</b>です。ここでの判定は本体の立体的な形状(輪郭・突起)の細さを見ていますので、柄の一部が細いだけであれば無視して問題ありません。';
+        card.appendChild(note);
+      }
+    }
+
+    const list = document.createElement('ul');
+    list.className = 'report-list';
+    if (!result.clusters.length) {
+      list.innerHTML = '<li class="empty-note">✅ 指定した最小幅を下回る箇所は見つかりませんでした。</li>';
+    } else {
+      result.clusters.forEach(function(c, i) {
+        const li = document.createElement('li');
+        li.className = 'report-item';
+        const xMm = (c.cx * result.mmPerPxScaled).toFixed(1);
+        const yMm = (c.cy * result.mmPerPxScaled).toFixed(1);
+        const maxMm = (c.maxThickness * result.mmPerPxScaled).toFixed(2);
+        const desc = result.mode === 'resin'
+          ? (result.methodId === 'polystone'
+              ? '最小幅 約<b>' + maxMm + 'mm</b>(必要:' + result.minWidthMm.toFixed(2) + 'mm) — <b>とがった突起・先端</b>と判定されました。シリコン型は多少のアンダーカットなら伸びて抜けますが、突起がとがりすぎている・大きすぎると<b>型から抜けなくなる可能性</b>や、抜くときに<b>欠けてしまう恐れ</b>があります。先端を<b>丸める</b>ことをおすすめします。'
+              : '最小幅 約<b>' + maxMm + 'mm</b>(必要:' + result.minWidthMm.toFixed(2) + 'mm) — この太さに盛られる、または欠ける可能性があります。色を流し込む/入れる工程がある場合は、細かすぎて<b>色が入らない・欠ける可能性</b>もあります。')
+          : '仕切りの最小幅 約<b>' + maxMm + 'mm</b>(必要:' + result.minWidthMm.toFixed(2) + 'mm) — 隣接する色が混ざる可能性があります。';
+        li.innerHTML = '<span class="badge">' + (i + 1) + '</span><span class="desc">画像上のおよそ(' + xMm + 'mm, ' + yMm + 'mm)付近。' + desc + '</span>';
+        li.classList.add('report-item-clickable');
+        li.title = 'クリックすると図の該当箇所が点滅します';
+        li.addEventListener('click', function() { blinkMarker(draw, i, canvas); });
+        list.appendChild(li);
+      });
+    }
+    card.appendChild(list);
+    return card;
+  }
+
+  function renderResults() {
+    const area = document.getElementById('resultsArea');
+    const overallWrap = document.getElementById('overallSummaryWrap');
+    // 集計用：単一結果(v.result)と、複数面(v.subViewResults)のすべてのエラーなし結果をまとめて数える
+    const allResults = [];
+    views.filter(v => v.img).forEach(function(v) {
+      if (v.subViewResults) v.subViewResults.forEach(sv => allResults.push(sv.result));
+      else if (v.result) allResults.push(v.result);
+    });
+    const withResult = allResults.filter(r => !r.error);
+
+    if (!views.some(v => v.img)) {
+      area.innerHTML = '<div class="card empty-note">まだ解析していません。②で画像を読み込み、「解析する」を押してください。</div>';
+      overallWrap.style.display = 'none';
+      return;
+    }
+    if (!allResults.length) {
+      area.innerHTML = '<div class="card empty-note">画像を読み込みました。「解析する」を押してください。</div>';
+      overallWrap.style.display = 'none';
+      return;
+    }
+
+    if (withResult.length) {
+      const totalViolations = withResult.reduce((a, r) => a + r.clusters.length, 0);
+      overallWrap.style.display = 'block';
+      document.getElementById('overallSummary').innerHTML =
+        '<div class="summary-chip ' + (totalViolations ? 'warn' : 'ok') + '"><b>' + totalViolations + '件</b>全アングル合計の指摘数</div>'
+        + '<div class="summary-chip"><b>' + withResult.length + '面</b>解析した面の数</div>';
+    } else {
+      overallWrap.style.display = 'none';
+    }
+
+    area.innerHTML = '';
+    views.filter(v => v.img).forEach(function(v) {
+      if (v.subViewResults) {
+        // 1枚の画像に複数の面(表面/裏面や6面図など)が含まれている場合：面ごとに個別のカードを並べる
+        v.subViewResults.forEach(function(sv) {
+          const card = buildResultCard(v, v.label + '（' + sv.label + '）', sv.result, [sv.region]);
+          area.appendChild(card);
+        });
+        return;
+      }
+      if (!v.result) {
+        const card = document.createElement('div');
+        card.className = 'card result-card';
+        card.innerHTML = '<div class="empty-note">「' + v.label + '」はまだ解析されていません。</div>';
+        area.appendChild(card);
+        return;
+      }
+      const card = buildResultCard(v, v.label, v.result, v.regions);
+      area.appendChild(card);
+    });
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  ⑥ 仕切り線(陽線)自動生成プレビュー
+  // ══════════════════════════════════════════════════════════════
+  function onWallGenDirectionChange() {
+    const direction = document.querySelector('input[name="wallGenDirection"]:checked').value;
+    document.getElementById('wallGenColorField').style.display = direction === 'convex' ? 'block' : 'none';
+  }
+
+  function runWallGeneration() {
+    const targets = views.filter(v => v.img);
+    if (!targets.length) { alert('先に②で画像を読み込んでください。'); return; }
+
+    const wallWidthMm = parseFloat(document.getElementById('wallGenWidth').value);
+    if (!isFinite(wallWidthMm) || wallWidthMm <= 0) { alert('仕切りの太さ(mm)を正しく入力してください。'); return; }
+    const direction = document.querySelector('input[name="wallGenDirection"]:checked').value; // 'convex' | 'concave'
+    const wallColorHex = document.getElementById('wallGenColorPicker').value;
+    const wallColorRgb = [
+      parseInt(wallColorHex.slice(1, 3), 16),
+      parseInt(wallColorHex.slice(3, 5), 16),
+      parseInt(wallColorHex.slice(5, 7), 16)
+    ];
+    const sensitivity = parseFloat(document.getElementById('wallGenSensitivity').value);
+
+    targets.forEach(function(v) {
+      v.wallGenResult = null; v.wallGenSubResults = null;
+      const axisPx = v.axis === 'height' ? v.img.naturalHeight : v.img.naturalWidth;
+      const mmPerPxScaledRaw = (v.sizeMm / axisPx) / v.scaleToOriginal; // 画像全体基準(6面図など複数領域の共通スケールに使用)
+      const radiusPxRaw = (wallWidthMm / mmPerPxScaledRaw) / 2;
+      const imageData = v.workCtx.getImageData(0, 0, v.workW, v.workH);
+      const tolerance = parseFloat(document.getElementById('toleranceInput').value);
+      const baseMaterialMask = buildTargetMask(imageData, v.workW, v.workH, 'resin', resinColor, tolerance, paletteColors);
+
+      // 背景(材料が無い部分)と接する輪郭線(＝製品全体のアウトライン)専用の仕切り幅。
+      // 凸仕上げ(金属プレート・ダイキャスト)は、内側のデコ(色間の仕切り)がそれより細く設定されていても、
+      // 型として成立させるためアウトラインだけは最低0.5mmを確保する。指定幅が0.5mm以上ならその幅をそのまま使う。
+      // 凹仕上げ(ソフトPVC)はこの下限を設けず、指定した仕切り幅をそのまま使う。
+      const outlineWidthMm = (direction === 'convex') ? Math.max(wallWidthMm, 0.5) : wallWidthMm;
+      const outlineRadiusPxRaw = (outlineWidthMm / mmPerPxScaledRaw) / 2;
+
+      // 1つの範囲(材料マスク)を解析して結果オブジェクトを返す共通処理。
+      // scaleForThisMask: 実寸(mm)は画像全体ではなく、実際に検出された中身(このマスクの外形)の
+      // 幅・高さに対応させるため、呼び出し側でマスクのバウンディングボックスから計算した値を渡す。
+      function analyzeWallGenMask(materialMask, scaleForThisMask) {
+        // 以下、この関数内では mmPerPxScaled / radiusPx / outlineRadiusPx は
+        // このマスク専用のスケールで計算し直した値を使う(同名の外側の変数を隠す)。
+        const mmPerPxScaled = scaleForThisMask;
+        const radiusPx = (wallWidthMm / mmPerPxScaled) / 2;
+        const outlineRadiusPx = (outlineWidthMm / mmPerPxScaled) / 2;
+        const curVariant = getVariant(v.methodId, v.variantId);
+        const curMethodForCheck = getMethod(v.methodId);
+        // 「印刷」「転写シール」は平面にそのまま図柄が乗るだけなので対象外。
+        if (curVariant && /print|decal/i.test(curVariant.id)) {
+          return { notApplicable: true, error: null };
+        }
+        // colorMode='brush'(ポリストーン・筆彩色等)は金属イメージではなく、
+        // 元のデザイン色をそのまま活かし、光の陰影程度を軽く付けた「彩色済みフィギュア風」の製品イメージにする。
+        // ぼかして平均化すると輪郭が甘くなってかえって分かりづらくなるため、色そのものはぼかさない。
+        const paintedFigure = !!(curMethodForCheck && curMethodForCheck.colorMode === 'brush');
+        if (materialMask.reduce((a, x) => a + x, 0) < 10) {
+          return { error: '材料部分を検出できませんでした。③の背景色指定や②の解析範囲を見直してください。' };
+        }
+        const labelMap = paletteColors.length ? buildPaletteLabelMap(imageData, materialMask, v.workW, v.workH, paletteColors) : null;
+        // 色入れ無し(メッキ1色のみ等、checkType='material')でパレット未登録の場合：
+        // 仕切り線という概念が無く、製品全体がそのまま指定した金属色になるため、
+        // 部分的な仕切りゾーンではなく材料全体をプレビュー対象にする。
+        // 「凸凹色入れ無し」(solid_nocolor)は全体塗りにせず、輪郭・模様の境目を凸(濃いグレー)、それ以外を凹(薄いグレー)の2色で表示する。
+        const wholeBodyMetal = !labelMap && curVariant && curVariant.checkType === 'material' && curVariant.id !== 'solid_nocolor';
+        // アウトライン(背景との境目)は内側の色境界とは別の太さ(outlineRadiusPx)で扱うため、
+        // 背景までの距離を別途測っておく。
+        const bgDist = distToBackground(materialMask, v.workW, v.workH);
+        let zone;
+        if (wholeBodyMetal) {
+          zone = materialMask;
+        } else if (labelMap) {
+          // パレット登録時は、境界を経由せず直接「違うラベルまでの距離」を測ることで、
+          // 2色の間の仕切りの合計幅がちょうど指定した太さ(wallWidthMm)になるようにする。
+          // ここでは背景は「違う色」に含めず(excludeBackground=true)、色どうしの境目だけをradiusPxで判定し、
+          // 輪郭線(背景との境目)は下のoutlineRadiusPxで別途判定する。
+          const distToDiff = computeDistToDifferentLabel(labelMap, v.workW, v.workH, paletteColors.length, true);
+          zone = new Uint8Array(v.workW * v.workH);
+          for (let i = 0; i < v.workW * v.workH; i++) {
+            if (!materialMask[i]) continue;
+            zone[i] = (distToDiff[i] <= radiusPx || bgDist[i] <= outlineRadiusPx) ? 1 : 0;
+          }
+        } else {
+          const boundary = detectColorBoundaries(imageData, materialMask, v.workW, v.workH, sensitivity);
+          const innerZone = buildWallZone(boundary, materialMask, v.workW, v.workH, radiusPx);
+          zone = new Uint8Array(v.workW * v.workH);
+          for (let i = 0; i < v.workW * v.workH; i++) {
+            if (!materialMask[i]) continue;
+            zone[i] = (innerZone[i] || bgDist[i] <= outlineRadiusPx) ? 1 : 0;
+          }
+        }
+        // 「凸(金属)にする」指定のある色は、仕切りの検出結果に関わらず、そのままその色の範囲全体を金属色にする
+        if (labelMap) {
+          for (let i = 0; i < v.workW * v.workH; i++) {
+            const label = labelMap[i];
+            if (label >= 0 && paletteColors[label].asMetal) zone[i] = 1;
+          }
+        }
+        const zoneCount = zone.reduce((a, x) => a + x, 0);
+        // ゾーン内部での「縁からの距離」を求めておく(プレビューで凸凹の立体感を出すため、
+        // 縁に近いほど暗く/明るく陰影をつける「面取り」風の表現に使う)。
+        let zoneEdgeDist = distToBackground(zone, v.workW, v.workH);
+        // 色入れ無し(製品全体が金属色)の場合：外周のシルエットだけでは、目・ネクタイ・文字など
+        // デザイン内部の模様(色の違い)が埋もれて真っ平らに見えてしまう。パレット未登録でも
+        // 色の違いを自動検出し、その境目からの距離も「縁」として扱うことで、内部の模様も
+        // 立体的な凹凸として表現できるようにする。
+        if (wholeBodyMetal) {
+          // 毛並みの1本1本などの細かいハッチングを無視し、耳・角・リング穴のような
+          // 大きな形の境目だけを拾うため、ぼかした画像で境界検出し、閾値も高めにする。
+          // ただし彩色済みフィギュア(paintedFigure)は、色そのものはぼかさない(輪郭が甘くなるため)。
+          const blurRadius = paintedFigure ? 1 : 3;
+          const boundaryThreshold = paintedFigure ? 65 : 55;
+          const blurred = boxBlurImageData(imageData, v.workW, v.workH, blurRadius);
+          const internalBoundary = detectColorBoundaries(blurred, materialMask, v.workW, v.workH, Math.max(sensitivity, boundaryThreshold));
+          const internalDist = chamferDistanceTransform(internalBoundary, v.workW, v.workH);
+          for (let i = 0; i < v.workW * v.workH; i++) {
+            if (zone[i] && internalDist[i] < zoneEdgeDist[i]) zoneEdgeDist[i] = internalDist[i];
+          }
+        }
+        // 色入れ有り(パレット登録あり)で凸仕上げの場合：仕切り(壁)以外の、色が流し込まれる
+        // 凹部分(材料のうち仕切りではない箇所)も、まだ色を入れていない生地の金属として
+        // シルバーのグラデーションで表現できるよう、その範囲と縁からの距離も求めておく。
+        let recessMask = null, recessEdgeDist = null;
+        // (パレット未登録でも、仕切りゾーン以外の材料部分がある限り計算する。
+        //  色入れ無しの製品全体塗り(wholeBodyMetal)のときはzone=materialMaskなので該当なし)
+        if (!wholeBodyMetal && direction === 'convex') {
+          recessMask = new Uint8Array(v.workW * v.workH);
+          for (let i = 0; i < v.workW * v.workH; i++) recessMask[i] = (materialMask[i] && !zone[i]) ? 1 : 0;
+          recessEdgeDist = distToBackground(recessMask, v.workW, v.workH);
+        }
+        // パレットを登録している場合のみ、色分けが細かすぎる箇所を判定する。
+        // colorMode='flow'(金属七宝・ソフトPVC等の色流し込み)なら「仕切りで埋まって色が入らない」、
+        // colorMode='brush'(ポリストーン等の筆彩色)なら「細かすぎて塗り分けできず、はみ出す」という意味になる。
+        let thinColorSuggestions = [];
+        if (paletteColors.length) {
+          thinColorSuggestions = findThinColorRegions(imageData, materialMask, v.workW, v.workH, paletteColors, mmPerPxScaled, wallWidthMm).suggestions;
+        }
+        const curMethod = getMethod(v.methodId);
+        const colorMode = (curMethod && curMethod.colorMode) ? curMethod.colorMode : 'flow';
+        return { zone, zoneEdgeDist, recessMask, recessEdgeDist, wholeBodyMetal, paintedFigure, noColorVariant: !!(curVariant && curVariant.id === 'solid_nocolor'), direction, wallColorRgb, wallWidthMm, zoneCount, thinColorSuggestions, mmPerPxScaled, colorMode, error: null };
+      }
+
+      if (v.regions.length >= 2) {
+        // 1枚の画像に表面・裏面や6面図など複数の面が含まれている場合：
+        // 各面は同じ1枚の写真の一部なので、画像全体基準の共通スケールをそのまま使う。
+        v.wallGenSubResults = v.regions.map(function(r, ri) {
+          const materialMask = applyRegionMask(baseMaterialMask, v.workW, v.workH, [r]);
+          const result = analyzeWallGenMask(materialMask, mmPerPxScaledRaw);
+          return { label: r.label || ('面' + (ri + 1)), region: r, result };
+        });
+      } else {
+        let materialMask = baseMaterialMask;
+        if (v.regions.length === 1) {
+          materialMask = applyRegionMask(materialMask, v.workW, v.workH, v.regions);
+        } else if (v.autoLargestComponent) {
+          materialMask = extractLargestComponentMask(materialMask, v.workW, v.workH);
+        }
+        // 実寸(mm)は、画像全体(余白込み)ではなく、実際に検出された中身の幅・高さに対応させる。
+        const bbox = computeMaskBBoxPx(materialMask, v.workW, v.workH);
+        const contentAxisPx = v.axis === 'height' ? bbox.height : bbox.width;
+        const scaleForThisMask = contentAxisPx > 0 ? (v.sizeMm / contentAxisPx) : mmPerPxScaledRaw;
+        v.wallGenResult = analyzeWallGenMask(materialMask, scaleForThisMask);
+      }
+    });
+
+    renderWallGenResults();
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  ⑧ 実寸SVGで書き出す
+  // ══════════════════════════════════════════════════════════════
+  // 2値マスク(mask)の画素境界を、格子の辺(グリッドエッジ)としてたどり、閉じたループ(輪郭)の配列にする。
+  // 塗られている画素の外周の辺だけを、常に同じ向き(塗りが左手側にくる向き)で集めるので、
+  // 各頂点の出発辺は高々1本になり、辺をつなげていくだけで輪郭(複数の穴・複数の部品も含む)を復元できる。
+  function traceRectilinearContours(mask, w, h) {
+    // 対角だけで触れ合う画素(市松模様のような箇所)があると、格子の1点に辺が集中して輪郭がねじれるため、
+    // 先に一方の対角を必ず埋めて、対角だけの接触を無くしておく(輪郭抽出の定番の前処理)。
+    const m = new Uint8Array(mask);
+    function get(x, y) { return x >= 0 && x < w && y >= 0 && y < h && m[y * w + x]; }
+    for (let y = 0; y < h - 1; y++) {
+      for (let x = 0; x < w - 1; x++) {
+        const a = get(x, y), b = get(x + 1, y), c = get(x, y + 1), d = get(x + 1, y + 1);
+        if (a && d && !b && !c) m[y * w + (x + 1)] = 1;
+        else if (b && c && !a && !d) m[y * w + (x + 1)] = 1;
+      }
+    }
+    function filled(x, y) { return x >= 0 && x < w && y >= 0 && y < h && m[y * w + x]; }
+    const next = new Map(); // "x,y" -> [tx,ty]
+    function addEdge(x1, y1, x2, y2) { next.set(x1 + ',' + y1, [x2, y2]); }
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (!filled(x, y)) continue;
+        if (!filled(x, y - 1)) addEdge(x, y, x + 1, y);         // 上辺
+        if (!filled(x + 1, y)) addEdge(x + 1, y, x + 1, y + 1); // 右辺
+        if (!filled(x, y + 1)) addEdge(x + 1, y + 1, x, y + 1); // 下辺
+        if (!filled(x - 1, y)) addEdge(x, y + 1, x, y);         // 左辺
+      }
+    }
+    const visited = new Set();
+    const loops = [];
+    for (const startKey of next.keys()) {
+      if (visited.has(startKey)) continue;
+      const loop = [];
+      let curKey = startKey;
+      let guard = 0;
+      while (!visited.has(curKey) && guard < 2000000) {
+        visited.add(curKey);
+        const parts = curKey.split(',');
+        loop.push([Number(parts[0]), Number(parts[1])]);
+        const nxt = next.get(curKey);
+        if (!nxt) break;
+        curKey = nxt[0] + ',' + nxt[1];
+        guard++;
+        if (curKey === startKey) break;
+      }
+      if (loop.length >= 3) loops.push(loop);
+    }
+    return loops;
+  }
+  // 一直線に並んでいるだけの中間点を間引く(ファイルサイズを減らすだけで、形は変えない)
+  function simplifyLoop(loop) {
+    const n = loop.length;
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const p0 = loop[(i - 1 + n) % n], p1 = loop[i], p2 = loop[(i + 1) % n];
+      const dx1 = p1[0] - p0[0], dy1 = p1[1] - p0[1];
+      const dx2 = p2[0] - p1[0], dy2 = p2[1] - p1[1];
+      if (dx1 * dy2 - dy1 * dx2 !== 0) out.push(p1);
+    }
+    return out.length >= 3 ? out : loop;
+  }
+  function loopsToSvgPathD(loops, scale, offX, offY) {
+    offX = offX || 0; offY = offY || 0;
+    let d = '';
+    loops.forEach(function(loop) {
+      const s = simplifyLoop(loop);
+      if (s.length < 3) return;
+      d += 'M ' + ((s[0][0] - offX) * scale).toFixed(3) + ' ' + ((s[0][1] - offY) * scale).toFixed(3) + ' ';
+      for (let i = 1; i < s.length; i++) d += 'L ' + ((s[i][0] - offX) * scale).toFixed(3) + ' ' + ((s[i][1] - offY) * scale).toFixed(3) + ' ';
+      d += 'Z ';
+    });
+    return d.trim();
+  }
+  function rgbToHex(rgb) {
+    return '#' + rgb.map(function(c) { return Math.max(0, Math.min(255, Math.round(c))).toString(16).padStart(2, '0'); }).join('');
+  }
+
+  // 1つの面(view)の実寸SVGを組み立てる。戻り値: { svg: 'SVG文字列' } | { error: '...' }
+  function buildProductSvg(v) {
+    const method = getMethod(v.methodId);
+    const variant = getVariant(v.methodId, v.variantId);
+    if (!method || !variant) return { error: '製法・バリエーションが選択されていません。' };
+    if (!isFinite(v.sizeMm) || v.sizeMm <= 0) return { error: '実寸(mm)を正しく入力してください。' };
+    const w = v.workW, h = v.workH;
+    const tolerance = parseFloat(document.getElementById('toleranceInput').value);
+    const imageData = v.workCtx.getImageData(0, 0, w, h);
+    let materialMask = buildTargetMask(imageData, w, h, 'resin', resinColor, tolerance, paletteColors);
+    if (v.regions.length === 1) materialMask = applyRegionMask(materialMask, w, h, v.regions);
+    else if (v.autoLargestComponent) materialMask = extractLargestComponentMask(materialMask, w, h);
+    if (materialMask.reduce((a, x) => a + x, 0) < 10) return { error: '材料部分を検出できませんでした。③の背景色指定や②の解析範囲を見直してください。' };
+
+    // 実寸(mm)は、画像全体(余白込み)ではなく、実際に検出された中身(キャラクター本体)の
+    // 幅・高さに対応させる。書き出すSVGのキャンバスも、余白を含めずこの中身の外形ぴったりにする。
+    const bbox = computeMaskBBoxPx(materialMask, w, h);
+    const contentAxisPx = v.axis === 'height' ? bbox.height : bbox.width;
+    const axisPxFallback = v.axis === 'height' ? v.img.naturalHeight : v.img.naturalWidth;
+    const mmPerPxScaled = contentAxisPx > 0 ? (v.sizeMm / contentAxisPx) : ((v.sizeMm / axisPxFallback) / v.scaleToOriginal);
+    // 余白を除いた中身ちょうどのサイズ(輪郭線の太さぶん、四方に少し余裕を持たせる)
+    const margin = 1; // work-canvas px 単位の余白(トレース時の線の太さ分の見切れ防止)
+    const off = { x: Math.max(0, bbox.minX - margin), y: Math.max(0, bbox.minY - margin) };
+    const realW = (bbox.width + margin * 2) * mmPerPxScaled, realH = (bbox.height + margin * 2) * mmPerPxScaled;
+
+    const paths = []; // { loops, d, fill, stroke, width, label }
+    // 形状の輪郭線(外形)：常に出力する
+    (function() {
+      const loops = traceRectilinearContours(materialMask, w, h);
+      paths.push({ loops: loops, d: loopsToSvgPathD(loops, mmPerPxScaled, off.x, off.y), stroke: '#000000', width: 0.15, label: '形状の輪郭線' });
+    })();
+
+    const needsWall = variant.checkType === 'wall' || variant.id === 'solid_nocolor';
+    if (needsWall) {
+      // 金属プレート・ダイキャストの凸凹色入れ(有り/無し)：仕切り幅ぶんの帯(zone)そのものの輪郭をたどると、
+      // 内側の辺と外側の辺の2本線として自然にアウトライン化される。
+      const wallWidthMm = parseFloat(document.getElementById('wallGenWidth').value) || variant.minWidthMm;
+      const radiusPx = (wallWidthMm / mmPerPxScaled) / 2;
+      const labelMap = paletteColors.length ? buildPaletteLabelMap(imageData, materialMask, w, h, paletteColors) : null;
+      let zone;
+      if (variant.id === 'solid_nocolor' || !labelMap) {
+        // 色分けが無い(色入れ無し)場合：外周から仕切り幅ぶんの帯を1本だけ生成する
+        const bgDist = distToBackground(materialMask, w, h);
+        zone = new Uint8Array(w * h);
+        for (let i = 0; i < w * h; i++) zone[i] = (materialMask[i] && bgDist[i] <= radiusPx) ? 1 : 0;
+      } else {
+        const distToDiff = computeDistToDifferentLabel(labelMap, w, h, paletteColors.length, true);
+        const bgDist = distToBackground(materialMask, w, h);
+        zone = new Uint8Array(w * h);
+        for (let i = 0; i < w * h; i++) zone[i] = (materialMask[i] && (distToDiff[i] <= radiusPx || bgDist[i] <= radiusPx)) ? 1 : 0;
+      }
+      // デザインにすでに金属色の輪郭線が描かれている場合、⑤で「凸(金属)にする」を付けた色は、
+      // 仕切りの計算結果に関わらずそのまま仕切り(壁)として扱う。これを入れないと、その色が
+      // 「色が入る部分」の一つとして誤って塗りつぶされてしまう(⑥製品イメージ生成と同じ仕様)。
+      if (labelMap) {
+        for (let i = 0; i < w * h; i++) {
+          const label = labelMap[i];
+          if (label >= 0 && paletteColors[label].asMetal) zone[i] = 1;
+        }
+      }
+      (function() {
+        const loops = traceRectilinearContours(zone, w, h);
+        paths.push({ loops: loops, d: loopsToSvgPathD(loops, mmPerPxScaled, off.x, off.y), stroke: '#c81e3a', width: 0.1, label: '仕切り線(幅' + wallWidthMm.toFixed(2) + 'mm・内外2本線)' });
+      })();
+      if (labelMap) {
+        // 色が入る凹部分：右下の色一覧と同じ色で、実際に色が入る範囲をベクトルの塗りとして表現する
+        // (「凸(金属)にする」を付けた色は仕切り扱いなので、ここでは塗らない)
+        paletteColors.forEach(function(pc, idx) {
+          if (pc.asMetal) return;
+          const hex = rgbToHex(pc.rgb);
+          const colorMask = new Uint8Array(w * h);
+          for (let i = 0; i < w * h; i++) colorMask[i] = (materialMask[i] && !zone[i] && labelMap[i] === idx) ? 1 : 0;
+          if (colorMask.reduce((a, x) => a + x, 0) < 4) return;
+          const loops = traceRectilinearContours(colorMask, w, h);
+          paths.push({ loops: loops, d: loopsToSvgPathD(loops, mmPerPxScaled, off.x, off.y), fill: hex, stroke: hex, width: 0.02, label: '色が入る部分(' + hex + ')' });
+        });
+      }
+    } else if (method.colorMode === 'brush' && paletteColors.length) {
+      // ポリストーン等(筆彩色)：⑤で登録した色どうしの、複数色の仕切り線(色分けの境目)をベクトル化する。
+      // 右下の色一覧と同じ色で、各色の範囲をそのままベクトルの塗りとして表現する。
+      const labelMap = buildPaletteLabelMap(imageData, materialMask, w, h, paletteColors);
+      paletteColors.forEach(function(pc, idx) {
+        const hex = rgbToHex(pc.rgb);
+        const colorMask = new Uint8Array(w * h);
+        for (let i = 0; i < w * h; i++) colorMask[i] = (materialMask[i] && labelMap[i] === idx) ? 1 : 0;
+        if (colorMask.reduce((a, x) => a + x, 0) < 4) return;
+        const loops = traceRectilinearContours(colorMask, w, h);
+        paths.push({ loops: loops, d: loopsToSvgPathD(loops, mmPerPxScaled, off.x, off.y), fill: hex, stroke: '#000000', width: 0.04, label: '仕切り線・塗り(' + hex + ')' });
+      });
+    }
+
+    // 右下に配置する色の一覧(⑤で登録した色。未登録なら③で指定した背景色・仕切り色のみ簡易表示)。
+    // キャラクター本体と重ならないよう、キャンバスの下に別枠として追加する。
+    const legendColors = paletteColors.length
+      ? paletteColors.map(function(pc) { return rgbToHex(pc.rgb); })
+      : [resinColor ? rgbToHex(resinColor) : null, metalColor ? rgbToHex(metalColor) : null].filter(Boolean);
+    const sw = Math.max(1.5, realW * 0.06), gap = sw * 0.35;
+    const legendStripH = legendColors.length ? (sw + gap * 2) : 0;
+    const totalH = realH + legendStripH;
+    let legendSvg = '';
+    if (legendColors.length) {
+      const legendW = legendColors.length * (sw + gap) + gap;
+      const legendX = realW - legendW - Math.max(0.5, realW * 0.02);
+      const legendY = realH + gap;
+      legendSvg += '<g>';
+      legendColors.forEach(function(hex, i) {
+        const x = legendX + gap + i * (sw + gap);
+        legendSvg += '<rect x="' + x.toFixed(2) + '" y="' + legendY.toFixed(2) + '" width="' + sw.toFixed(2) + '" height="' + sw.toFixed(2) + '" fill="' + hex + '" stroke="#333" stroke-width="' + (sw * 0.04).toFixed(3) + '"/>';
+      });
+      legendSvg += '</g>';
+    }
+
+    const pathsSvg = paths.slice().sort(function(a, b) { return (a.fill ? 0 : 1) - (b.fill ? 0 : 1); }).map(function(p) {
+      if (!p.d) return '';
+      return '<path d="' + p.d + '" fill="' + (p.fill || 'none') + '" fill-rule="evenodd" stroke="' + p.stroke + '" stroke-width="' + p.width.toFixed(3) + '" stroke-linejoin="round"><title>' + p.label + '</title></path>';
+    }).join('\n');
+
+    const svg = '<?xml version="1.0" encoding="UTF-8"?>\n'
+      + '<svg xmlns="http://www.w3.org/2000/svg" width="' + realW.toFixed(2) + 'mm" height="' + totalH.toFixed(2) + 'mm" viewBox="0 0 ' + realW.toFixed(2) + ' ' + totalH.toFixed(2) + '">\n'
+      + '<!-- キャラクター本体の実寸: ' + realW.toFixed(2) + 'mm x ' + realH.toFixed(2) + 'mm(余白は含みません)。1ユーザー単位=1mm。下の帯は色一覧です。 -->\n'
+      + pathsSvg + '\n'
+      + legendSvg + '\n'
+      + '</svg>';
+    return { svg: svg, vector: { realW: realW, realH: realH, totalH: totalH, mmPerPxScaled: mmPerPxScaled, paths: paths, legendColors: legendColors } };
+  }
+
+  function runSvgExport() {
+    const targets = views.filter(v => v.img);
+    const statusEl = document.getElementById('svgExportStatus');
+    const area = document.getElementById('svgExportResultsArea');
+    area.innerHTML = '';
+    if (!targets.length) { statusEl.className = 'status err'; statusEl.textContent = '⚠️ 画像が読み込まれていません。'; return; }
+    let okCount = 0, errCount = 0;
+    targets.forEach(function(v, vi) {
+      const label = v.label || ('面' + (vi + 1));
+      const result = buildProductSvg(v);
+      const row = document.createElement('div');
+      row.className = 'card';
+      if (result.error) {
+        errCount++;
+        row.innerHTML = '<b>' + label + '</b><div class="empty-note">⚠️ ' + result.error + '</div>';
+      } else {
+        okCount++;
+        const blob = new Blob([result.svg], { type: 'image/svg+xml' });
+        const url = URL.createObjectURL(blob);
+        const fileName = (v.name || label).replace(/[^\w\-ぁ-んァ-ヶ一-龠]/g, '_') + '.svg';
+        row.innerHTML = '<b>' + label + '</b> — 実寸SVGを書き出しました。<br>'
+          + '<a href="' + url + '" download="' + fileName + '" class="btn btn-outline" style="display:inline-block;margin-top:6px;">⬇ ' + fileName + ' をダウンロード</a>';
+      }
+      area.appendChild(row);
+    });
+    statusEl.className = errCount ? 'status err' : 'status ok';
+    statusEl.textContent = errCount
+      ? '⚠️ ' + okCount + '件成功 / ' + errCount + '件エラー'
+      : '✅ ' + okCount + '件のSVGを書き出しました。';
+  }
+
+  // 輪郭(ループ)の符号付き面積(シューレース公式)。正負の符号で「外形」か「穴」かを判定できる
+  // (traceRectilinearContoursは、材料が常に辺の同じ側にくる向きで辺をたどるため、
+  //  外形の輪郭と、その内側の穴の輪郭とで、必ず符号が逆になる)。
+  function loopSignedArea(loop) {
+    let sum = 0;
+    for (let i = 0; i < loop.length; i++) {
+      const p1 = loop[i], p2 = loop[(i + 1) % loop.length];
+      sum += p1[0] * p2[1] - p2[0] * p1[1];
+    }
+    return sum / 2;
+  }
+  function hexToRgbArr(hex) {
+    const n = parseInt(hex.replace('#', ''), 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  // jsPDFのdoc.lines()は「直前の点からの相対移動」の配列を取るため、絶対座標配列から変換する
+  function loopToRelativeVectors(loop, scale, offX, offY) {
+    const pts = loop.map(function(p) { return [(p[0] - offX) * scale, (p[1] - offY) * scale]; });
+    const vecs = [];
+    for (let i = 1; i < pts.length; i++) vecs.push([pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]]);
+    vecs.push([pts[0][0] - pts[pts.length - 1][0], pts[0][1] - pts[pts.length - 1][1]]);
+    return { start: pts[0], vecs: vecs };
+  }
+
+  // 1つの面(view)の実寸PDFをjsPDFで組み立てる。⑧SVGと同じ輪郭データ(buildProductSvgのvector)を再利用する。
+  // 戻り値: { doc: jsPDFインスタンス } | { error: '...' }
+  function buildProductPdf(v) {
+    if (typeof window.jspdf === 'undefined') return { error: 'PDF生成用のライブラリの読み込みに失敗しました。ネットワーク環境をご確認のうえ、ページを再読み込みしてください。' };
+    const svgResult = buildProductSvg(v);
+    if (svgResult.error) return { error: svgResult.error };
+    const vec = svgResult.vector;
+    const legendColors = vec.legendColors;
+    const sw = Math.max(1.5, vec.realW * 0.06), gap = sw * 0.35;
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'mm', format: [vec.realW, vec.totalH], orientation: vec.realW >= vec.totalH ? 'l' : 'p' });
+
+    // fill(色が指定されている)パスを先に描き、線だけのパス(輪郭・仕切り)を後から重ねて、
+    // 線がきれいに見えるようにする(⑧SVGと同じ重ね順)。
+    vec.paths.slice().sort(function(a, b) { return (a.fill ? 0 : 1) - (b.fill ? 0 : 1); }).forEach(function(p) {
+      if (!p.loops || !p.loops.length) return;
+      const outer = p.loops.filter(function(l) { return loopSignedArea(l) >= 0; });
+      const holes = p.loops.filter(function(l) { return loopSignedArea(l) < 0; });
+      doc.setLineWidth(p.width);
+      if (p.fill) {
+        const rgb = hexToRgbArr(p.fill);
+        doc.setFillColor(rgb[0], rgb[1], rgb[2]);
+        const strokeRgb = hexToRgbArr(p.stroke);
+        doc.setDrawColor(strokeRgb[0], strokeRgb[1], strokeRgb[2]);
+        // 外形を塗り、穴は背景色(白)で上から塗って打ち抜く(簡易的な穴あき表現)
+        outer.forEach(function(loop) {
+          const rv = loopToRelativeVectors(loop, 1, 0, 0);
+          doc.lines(rv.vecs, rv.start[0], rv.start[1], [1, 1], 'DF', true);
+        });
+        if (holes.length) {
+          doc.setFillColor(255, 255, 255);
+          holes.forEach(function(loop) {
+            const rv = loopToRelativeVectors(loop, 1, 0, 0);
+            doc.lines(rv.vecs, rv.start[0], rv.start[1], [1, 1], 'F', true);
+          });
+        }
+      } else {
+        const strokeRgb = hexToRgbArr(p.stroke);
+        doc.setDrawColor(strokeRgb[0], strokeRgb[1], strokeRgb[2]);
+        p.loops.forEach(function(loop) {
+          const rv = loopToRelativeVectors(loop, 1, 0, 0);
+          doc.lines(rv.vecs, rv.start[0], rv.start[1], [1, 1], 'S', true);
+        });
+      }
+    });
+
+    // 右下の色一覧(⑧SVGと同じ配置)
+    if (legendColors.length) {
+      const legendW = legendColors.length * (sw + gap) + gap;
+      const legendX = vec.realW - legendW - Math.max(0.5, vec.realW * 0.02);
+      const legendY = vec.realH + gap;
+      legendColors.forEach(function(hex, i) {
+        const x = legendX + gap + i * (sw + gap);
+        const rgb = hexToRgbArr(hex);
+        doc.setFillColor(rgb[0], rgb[1], rgb[2]);
+        doc.setDrawColor(51, 51, 51);
+        doc.setLineWidth(sw * 0.04);
+        doc.rect(x, legendY, sw, sw, 'DF');
+      });
+    }
+
+    return { doc: doc };
+  }
+
+  function runPdfExport() {
+    const targets = views.filter(v => v.img);
+    const statusEl = document.getElementById('svgExportStatus');
+    const area = document.getElementById('svgExportResultsArea');
+    area.innerHTML = '';
+    if (!targets.length) { statusEl.className = 'status err'; statusEl.textContent = '⚠️ 画像が読み込まれていません。'; return; }
+    let okCount = 0, errCount = 0;
+    targets.forEach(function(v, vi) {
+      const label = v.label || ('面' + (vi + 1));
+      const result = buildProductPdf(v);
+      const row = document.createElement('div');
+      row.className = 'card';
+      if (result.error) {
+        errCount++;
+        row.innerHTML = '<b>' + label + '</b><div class="empty-note">⚠️ ' + result.error + '</div>';
+      } else {
+        okCount++;
+        const fileName = (v.name || label).replace(/[^\w\-ぁ-んァ-ヶ一-龠]/g, '_') + '.pdf';
+        const blobUrl = result.doc.output('bloburl');
+        row.innerHTML = '<b>' + label + '</b> — 実寸PDFを書き出しました。<br>'
+          + '<a href="' + blobUrl + '" download="' + fileName + '" class="btn btn-outline" style="display:inline-block;margin-top:6px;">⬇ ' + fileName + ' をダウンロード</a>';
+      }
+      area.appendChild(row);
+    });
+    statusEl.className = errCount ? 'status err' : 'status ok';
+    statusEl.textContent = errCount
+      ? '⚠️ ' + okCount + '件成功 / ' + errCount + '件エラー'
+      : '✅ ' + okCount + '件のPDFを書き出しました。';
+  }
+
+  // 1件の仕切り線プレビュー結果を1枚のカードとして描画する共通処理
+  function clamp255(v) { return v < 0 ? 0 : (v > 255 ? 255 : v); }
+  // 斜め45度の帯状に明暗を変化させ、シルバー/ゴールドなど金属色を「ヘアライン仕上げ」風の
+  // 光沢があるように見せるための明るさ係数(0.72〜1.28程度)を返す。
+  function metallicShadeFactor(x, y) {
+    const band = Math.sin((x + y) * 0.045) * 0.5 + Math.sin((x - y) * 0.02) * 0.25;
+    return 1 + band * 0.16;
+  }
+  // ゾーンの「縁からの距離(zoneEdgeDist)」から簡易的な高さマップを作り、
+  // 左上から光が当たっていると仮定して面取り(ベベル)風の陰影係数マップを返す。
+  // 凸(convex)なら縁が暗く盛り上がった中心が明るい(山型)、凹(concave)ならその逆(谷型)になる。
+  function buildBevelShadeMap(zone, zoneEdgeDist, w, h, bevelPx, invert, strength) {
+    const height = new Float32Array(w * h);
+    for (let i = 0; i < w * h; i++) {
+      if (!zone[i]) continue;
+      const t = Math.min(zoneEdgeDist[i], bevelPx) / bevelPx; // 0(縁)〜1(内部平坦部)
+      // ease-out: 縁のすぐ内側で傾斜が急、内部に向かうほどなだらかになる(実際の面取り・丸みに近い形状)。
+      // 単純な直線ランプより、縁のハイライト/シャドウがくっきり出て凸凹が分かりやすくなる。
+      let hgt = 1 - (1 - t) * (1 - t);
+      if (invert) hgt = 1 - hgt;
+      height[i] = hgt;
+    }
+    const shade = new Float32Array(w * h).fill(1);
+    const lightX = -0.7, lightY = -0.7;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        if (!zone[i]) continue;
+        const xm = x > 0 ? i - 1 : i, xp = x < w - 1 ? i + 1 : i;
+        const ym = y > 0 ? i - w : i, yp = y < h - 1 ? i + w : i;
+        const dx = height[xp] - height[xm];
+        const dy = height[yp] - height[ym];
+        shade[i] = 1 + (dx * lightX + dy * lightY) * strength;
+      }
+    }
+    return shade;
+  }
+
+  function buildWallGenCard(v, cardLabel, r) {
+    const card = document.createElement('div');
+    card.className = 'card result-card';
+
+    if (r.error) {
+      card.innerHTML = '<div class="result-toolbar"><span>' + cardLabel + '(仕切り線プレビュー)</span></div><div class="empty-note">⚠️ ' + r.error + '</div>';
+      return card;
+    }
+    if (r.notApplicable) {
+      card.innerHTML = '<div class="result-toolbar"><span>' + cardLabel + '</span></div>'
+        + '<div class="empty-note">この製法(印刷・筆彩色・ポリストーン等)には、金属を流し込んだり仕切りを彫ったりする工程が無く、シルバー等の金属イメージにする意味が無いため、製品イメージ生成は対象外です。①②の基本チェック(最小幅)のみご利用ください。</div>';
+      return card;
+    }
+
+    const toolbar = document.createElement('div');
+    toolbar.className = 'result-toolbar';
+    const showRecessToggle = r.recessMask
+      ? '<label style="margin-left:10px;"><input type="checkbox" id="recessCb"' + (r.noColorVariant ? ' checked' : '') + '> 色が入る凹部分を薄いグレーで表示(OFFで元のデザイン色)</label><span style="margin-left:8px;font-size:11px;color:#888;">[フラット2色版]</span>'
+      : '';
+    toolbar.innerHTML = '<span>' + cardLabel + (r.colorMode === 'brush'
+        ? '(塗り分け確認・基準' + r.wallWidthMm.toFixed(2) + 'mm)'
+        : '(仕切り線プレビュー・' + (r.direction === 'convex' ? '凸' : '凹') + '・' + r.wallWidthMm.toFixed(2) + 'mm)') + '</span>'
+      + '<label><input type="checkbox" checked> 仕切りを表示</label>' + showRecessToggle;
+    const toggleCb = toolbar.querySelector('input[type="checkbox"]');
+    const recessCb = toolbar.querySelector('#recessCb');
+    card.appendChild(toolbar);
+
+    const canvasWrap = document.createElement('div');
+    canvasWrap.className = 'result-canvas-wrap';
+    const canvas = document.createElement('canvas');
+    canvas.className = 'result-canvas';
+    canvas.width = v.workW; canvas.height = v.workH;
+    canvasWrap.appendChild(canvas);
+    card.appendChild(canvasWrap);
+
+    function draw(highlightIndex) {
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(v.workCanvas, 0, 0);
+      if (toggleCb.checked) {
+        // ゾーンの厚み(=仕切りの太さ)に応じたベベル幅で、山型(凸)/谷型(凹)の陰影マップを作る。
+        // 部分的な仕切り線は、その太さに応じた細いベベルにする。
+        // 色入れ無し(製品全体が金属色)の場合は、外周だけでなく目・ネクタイ・文字などデザイン内部の
+        // 境目でも陰影がつくようになったため、細かい模様までつぶれないよう控えめな幅にする。
+        const bevelPx = r.wholeBodyMetal
+          ? Math.max(6, Math.min(24, Math.round(Math.min(v.workW, v.workH) * 0.035)))
+          : Math.max(2, (r.wallWidthMm / r.mmPerPxScaled) * 0.6);
+        const bevelStrength = r.wholeBodyMetal ? 1.5 : 0.55;
+        const reliefMin = r.wholeBodyMetal ? 0.35 : 0.55;
+        const reliefMax = r.wholeBodyMetal ? 1.85 : 1.6;
+        const bevelShade = buildBevelShadeMap(r.zone, r.zoneEdgeDist, v.workW, v.workH, bevelPx, r.direction === 'concave', bevelStrength);
+        const img = ctx.getImageData(0, 0, v.workW, v.workH);
+        const data = img.data;
+        for (let i = 0; i < v.workW * v.workH; i++) {
+          if (!r.zone[i]) continue;
+          const relief = Math.max(reliefMin, Math.min(reliefMax, bevelShade[i]));
+          if (r.paintedFigure) {
+            // ポリストーン等(筆彩色)：ぼかさず元のデザイン色のまま、光の陰影程度を軽く掛けるだけにする。
+            const shade = Math.max(0.82, Math.min(1.18, relief));
+            data[i * 4] = clamp255(Math.round(data[i * 4] * shade));
+            data[i * 4 + 1] = clamp255(Math.round(data[i * 4 + 1] * shade));
+            data[i * 4 + 2] = clamp255(Math.round(data[i * 4 + 2] * shade));
+          } else if (r.direction === 'convex') {
+            // 凸(金属の色がそのまま乗る)：
+            // ・色入れ無し(製品全体が金属色)のときだけ、斜め方向の光沢バンドで金属らしい質感を出す。
+            // ・色入れ有り(仕切り線)のときは、単色グレー等そのままの色で、面取りの陰影(relief)だけ付けて
+            //   シンプルな凸ラインとして再現する。
+            const x = i % v.workW, y = (i / v.workW) | 0;
+            const shade = r.wholeBodyMetal ? (metallicShadeFactor(x, y) * relief) : relief;
+            data[i * 4] = clamp255(Math.round(r.wallColorRgb[0] * shade));
+            data[i * 4 + 1] = clamp255(Math.round(r.wallColorRgb[1] * shade));
+            data[i * 4 + 2] = clamp255(Math.round(r.wallColorRgb[2] * shade));
+            data[i * 4 + 3] = 255;
+          } else {
+            // 凹(色は変わらず溝ができるだけ)：中心ほど深く暗く、縁は元の色に近い明るさにして、
+            // 溝の立体感を出す。
+            const darken = 0.62 * relief;
+            data[i * 4] = clamp255(Math.round(data[i * 4] * darken));
+            data[i * 4 + 1] = clamp255(Math.round(data[i * 4 + 1] * darken));
+            data[i * 4 + 2] = clamp255(Math.round(data[i * 4 + 2] * darken));
+          }
+        }
+        // 色が入る凹部分(仕切り以外の材料)：凸(仕切り)=濃いグレーのフラット単色、
+        // 凹=薄いグレーで、凹みごとではなく製品全体を1枚の金属プレートとして見せる
+        // 一続きの平面グラデーション(全ての凹みで同じグラデーション)にする。
+        if (r.recessMask && recessCb && recessCb.checked) {
+          const WALL_DARKEN = 0.72;
+          let bx0 = v.workW, by0 = v.workH, bx1 = 0, by1 = 0;
+          for (let i = 0; i < v.workW * v.workH; i++) {
+            if (!r.recessMask[i] && !r.zone[i]) continue;
+            const x = i % v.workW, y = (i / v.workW) | 0;
+            if (x < bx0) bx0 = x; if (x > bx1) bx1 = x;
+            if (y < by0) by0 = y; if (y > by1) by1 = y;
+          }
+          const bw = Math.max(1, bx1 - bx0), bh = Math.max(1, by1 - by0);
+          for (let i = 0; i < v.workW * v.workH; i++) {
+            if (r.recessMask[i]) {
+              const x = i % v.workW, y = (i / v.workW) | 0;
+              // 左上→右下方向の斜めグラデーション(0〜1)。中央付近が最も明るい金属光沢。
+              const t = Math.min(1, Math.max(0, ((x - bx0) / bw) * 0.4 + ((y - by0) / bh) * 0.6));
+              const f = 0.86 + 0.16 * Math.exp(-Math.pow((t - 0.45) / 0.25, 2));
+              data[i * 4] = clamp255(Math.round(r.wallColorRgb[0] * f));
+              data[i * 4 + 1] = clamp255(Math.round(r.wallColorRgb[1] * f));
+              data[i * 4 + 2] = clamp255(Math.round(r.wallColorRgb[2] * f));
+              data[i * 4 + 3] = 255;
+            } else if (r.zone[i]) {
+              data[i * 4] = Math.round(r.wallColorRgb[0] * WALL_DARKEN);
+              data[i * 4 + 1] = Math.round(r.wallColorRgb[1] * WALL_DARKEN);
+              data[i * 4 + 2] = Math.round(r.wallColorRgb[2] * WALL_DARKEN);
+              data[i * 4 + 3] = 255;
+            }
+          }
+        }
+        ctx.putImageData(img, 0, 0);
+      }
+      // 色入れでは細すぎる箇所を、オレンジの破線丸+番号で表示する
+      ctx.font = 'bold 13px sans-serif';
+      r.thinColorSuggestions.forEach(function(s, i) {
+        const hi = (i === highlightIndex);
+        ctx.fillStyle = hi ? '#fff200' : '#ffffff';
+        ctx.strokeStyle = hi ? '#ff2d55' : '#e2802e';
+        ctx.lineWidth = hi ? 3 : 2;
+        const radius = hi ? 15 : 10;
+        ctx.setLineDash(hi ? [] : [3, 2]);
+        ctx.beginPath(); ctx.arc(s.cx, s.cy, radius, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = hi ? '#ff2d55' : '#e2802e';
+        ctx.font = hi ? 'bold 15px sans-serif' : 'bold 13px sans-serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('P' + (i + 1), s.cx, s.cy + 1);
+        ctx.font = 'bold 13px sans-serif';
+      });
+    }
+    draw(null);
+    toggleCb.addEventListener('change', function() { draw(null); });
+    if (recessCb) recessCb.addEventListener('change', function() { draw(null); });
+
+    const note = document.createElement('div');
+    note.className = 'disclaimer';
+    note.style.borderTop = 'none';
+    note.textContent = r.direction === 'convex'
+      ? 'グレーに塗られた部分が、実物では指定した金属色の凸(仕切り)になります。'
+      : '暗く表示されている部分は色が変わるわけではなく、実物ではその位置が凹んだ溝になることを示しています(表示上の色は説明のための表現です)。';
+    card.appendChild(note);
+
+    if (r.thinColorSuggestions.length) {
+      const printList = document.createElement('ul');
+      printList.className = 'report-list';
+      const header = document.createElement('li');
+      header.className = 'empty-note';
+      header.style.padding = '0 0 4px';
+      const isBrush = (r.colorMode === 'brush');
+      header.innerHTML = isBrush
+        ? '🖌️ <b>塗り分けが難しい箇所(色がはみ出す可能性があります)</b>'
+        : '🖨️ <b>色入れでの再現が難しい箇所(印刷への変更を検討してください)</b>';
+      printList.appendChild(header);
+      if (r.thinColorSuggestions.length >= 6) {
+        const roiHint = document.createElement('li');
+        roiHint.className = 'empty-note';
+        roiHint.style.padding = '0 0 8px';
+        roiHint.style.color = '#1a56db';
+        roiHint.textContent = '⚠️ 指摘が多い場合、寸法線・矢印・文字などの指示部分がデザインとして拾われている可能性があります。②の画像の「自動的に一番大きなかたまりだけを解析する」がオンになっているか確認するか、「解析範囲を指定」で実際のデザイン部分だけを囲ってから再度お試しください。';
+        printList.appendChild(roiHint);
+      }
+      r.thinColorSuggestions.forEach(function(s, i) {
+        const li = document.createElement('li');
+        li.className = 'report-item';
+        const xMm = (s.cx * r.mmPerPxScaled).toFixed(1);
+        const yMm = (s.cy * r.mmPerPxScaled).toFixed(1);
+        const countNote = s.count > 1 ? '(近接する' + s.count + '箇所をまとめて表示)' : '';
+        const survivePct = Math.round(s.worstSurviveRatio * 100);
+        li.innerHTML = '<span class="badge" style="background:#e2802e;">P' + (i + 1) + '</span>'
+          + '<span class="desc">色 <b>' + s.colorHex + '</b>、画像上のおよそ(' + xMm + 'mm, ' + yMm + 'mm)付近' + countNote + '。'
+          + (isBrush
+              ? '指定した基準幅(' + r.wallWidthMm.toFixed(2) + 'mm)に対して、この色の面は約<b>' + survivePct + '%</b>しか余裕がありません。筆で塗り分けるには細かすぎるため、<b>隣の色にはみ出す</b>可能性があります。転写シールや印刷での再現もご検討ください。</span>'
+              : '指定した仕切り幅(' + r.wallWidthMm.toFixed(2) + 'mm)を実際に生成すると、この色の面は約<b>' + survivePct + '%</b>しか残りません。色入れではなく印刷での再現をおすすめします。</span>');
+        li.classList.add('report-item-clickable');
+        li.title = 'クリックすると図の該当箇所が点滅します';
+        li.addEventListener('click', function() { blinkMarker(draw, i, canvas); });
+        printList.appendChild(li);
+      });
+      card.appendChild(printList);
+    } else if (paletteColors.length) {
+      const okNote = document.createElement('div');
+      okNote.className = 'empty-note';
+      okNote.textContent = (r.colorMode === 'brush')
+        ? '✅ 登録した色はすべて、筆での塗り分けに十分な太さがありました。'
+        : '✅ 登録した色はすべて、色入れでの再現に十分な太さがありました。';
+      card.appendChild(okNote);
+    }
+
+    return card;
+  }
+
+  function renderWallGenResults() {
+    const area = document.getElementById('wallGenResultsArea');
+    area.innerHTML = '';
+    const targets = views.filter(v => v.img && (v.wallGenResult || v.wallGenSubResults));
+    if (!targets.length) return;
+
+    targets.forEach(function(v) {
+      if (v.wallGenSubResults) {
+        v.wallGenSubResults.forEach(function(sv) {
+          const card = buildWallGenCard(v, v.label + '（' + sv.label + '）', sv.result);
+          area.appendChild(card);
+        });
+        return;
+      }
+      const card = buildWallGenCard(v, v.label, v.wallGenResult);
+      area.appendChild(card);
+    });
+  }
+  // ══════════════════════════════════════════════════════════════
+  //  使い方ガイド チャットボット(ルールベースFAQ、API不使用でオフライン動作)
+  //  ※ このツールは完全に静的なHTMLファイル(サーバー無し)として配布されるため、
+  //    実際のAI(Claude等)のAPIをここから呼び出すことはできない(APIキーが無い)。
+  //    そのため、キーワード一致度でFAQから最も近い回答を選ぶ簡易的な仕組みにしている。
+  // ══════════════════════════════════════════════════════════════
+  const HELPBOT_FAQ = [
+    {
+      q: 'こんにちは',
+      keywords: ['こんにちは', 'こんばんは', 'おはよう', 'はじめまして', 'hello', 'hi'],
+      a: 'こんにちは！このツールの使い方について質問してください。下の「よくある質問」ボタンから選んでいただくこともできます。'
+    },
+    {
+      q: 'チャットボットの内容は最新ですか？',
+      keywords: ['最新', 'チャットボット', '更新されて', '内容は更新'],
+      a: 'はい、⑥製品イメージを生成する(旧:仕切り線プレビュー)の機能拡張や、⑧実寸SVGで書き出す機能の追加など、最近の変更を反映しています。古い内容が残っていると感じたら、具体的にどの機能についてか教えてください。'
+    },
+    {
+      q: '6面図や図面シートを読み込んだら、指摘が何十件も出てしまいます',
+      keywords: ['6面図', '図面', '指摘が多', '何十件', '大量', '59件', 'view'],
+      a: '図面シートには寸法線・引き出し線・「TOP VIEW」などのラベル枠が含まれており、それらがすべて「細い線」として検出されてしまうためです。'
+        + '②の「🔲 解析範囲を指定」で、<b>各ビューのイラスト部分だけ</b>を四角で囲んでください(寸法線・ラベル・矢印は範囲の外に置く)。'
+        + '6つのビューがある場合は6つの四角を描けば、それぞれ別の面として個別にレポートされます。すべての指摘が同じ太さ(例: 全部0.08mm)になっている場合は、まず間違いなく指示線を拾っています。'
+    },
+    {
+      q: '1つの製品で印刷・転写シール・筆彩色を使い分けたいときはどうしますか？',
+      keywords: ['転写シール', 'デカール', '筆彩色', '手描き', '使い分け', '工程を混在', '表面加工'],
+      a: '①の製法で<b>「表面加工(共通・製法を問わず使える仕上げ)」</b>を選ぶと、「転写シール(デカール)」「筆による彩色(手描き)」「印刷(汎用)」から選べます。'
+        + '1つの製品の中で工程が混在する場合は、それぞれの部分を別々の解析範囲(または別画像)に分けて、対応する仕上げ方法でチェックしてください。'
+    },
+    {
+      q: '透明素材の中に色があるデザインは再現できますか？',
+      keywords: ['透明', 'クリア', '白身', '層', '重なり', '中に色'],
+      a: '透明樹脂で成形した上から彩色すると、色は常に「表面」に乗ります。そのため、透明な層の<b>奥に別の色がある</b>ような表現(例: 透明な白身の下に見える醤油や米)は、1つのパーツのままでは再現できません。'
+        + '色を塗った本体パーツと透明パーツを別々に成形して後から組み合わせる、といった多パーツ構成が必要になります。その場合は、各パーツを別々の画像(または解析範囲)として個別にチェックしてください。'
+    },
+    {
+      q: '立体成形品のチェックは、どういう順番・考え方で進めればいいですか？',
+      keywords: ['2段階', '型から抜け', '型抜き', '成形と彩色', 'アンダーカット', '順番', '進め方', 'どの順'],
+      a: '立体成形品(ダイキャスト・ポリストーンなど)は、性質が異なる2つの段階に分けて考えると分かりやすいです。'
+        + '<ul>'
+        + '<li><b>① 成形(型から抜けるか)</b>：勾配・アンダーカット・型の破損リスクの話です。これは2D画像だけでは判定できません(立体形状や型の抜き方向のデータが必要)。原型師・成形会社に3Dデータで確認してもらってください。ただし「細すぎる突起が折れないか」といった太さのチェックは、①②③の基本チェックで可能です。</li>'
+        + '<li><b>② 彩色(筆・転写シール・印刷)</b>：塗り分けの細かさ、はみ出しのリスクの話です。こちらは⑤で色を登録し、⑥で製法(筆彩色/転写シール/印刷)ごとにプレビュー生成することで確認できます。</li>'
+        + '</ul>'
+        + 'ポリストーンはシリコン型なので、多少のアンダーカットなら型を伸ばして抜けます(裂けない程度に、が条件です)。まず①の形状面を成形会社に相談しつつ、②の彩色面をこのツールで詰めていく、という進め方がおすすめです。'
+    },
+    {
+      q: '①製法とは何ですか？何を選べばいいですか？',
+      keywords: ['①', '製法', 'ダイキャスト', 'ポリストーン', '金属プレート', 'ソフトpvc', 'ソフトPVC', '加工方法', '何を選'],
+      a: '①では、この商品をどう作るか(製法)を1つだけ選びます。選んだ製法は、②で読み込むすべての画像に共通で適用されます。'
+        + '<ul>'
+        + '<li><b>ダイキャスト</b>：金型に金属を流し込んで成形(プレート/立体成形/凸凹色入れ有り/凸凹色入れ無し/色入れ無し)</li>'
+        + '<li><b>ポリストーン</b>：シリコン型に樹脂を流し込む立体成形(筆彩色)</li>'
+        + '<li><b>金属プレート</b>：単色彫刻・凸凹色入れ(エッチング/型押し)・凸凹色入れ無し・素地のまま・印刷</li>'
+        + '<li><b>ソフトPVC</b>：色を流し込む2D/3D、または印刷</li>'
+        + '</ul>製法を選ぶと「バリエーション」(具体的な仕上げ方法)を②の各画像で選べるようになります。「凸凹色入れ無し」は、色分けはしないが立体的な凸凹がある製品(メッキ1色)を指し、⑥の製品イメージ生成で、輪郭・模様の境目が濃いグレー、それ以外が薄いグレーの2色で表示されます。'
+    },
+    {
+      q: 'バリエーションとは何ですか？',
+      keywords: ['バリエーション', '表面3d', '裏面2d', 'エッチング', '型押し', '単色彫刻'],
+      a: '同じ製法の中での「具体的な仕上げ方」のことです。例えば金属プレートなら「単色彫刻(エッチング)」「凸凹色入れ(型押し)」「素地のまま」「印刷」などから選びます。'
+        + 'それぞれ最小再現幅の初期値が異なり、②の各画像ごとに個別に選べるので、1枚の画像に表面(3D)と裏面(印刷)のように違う仕上げが混在していても対応できます。'
+    },
+    {
+      q: '画像はどうやって読み込みますか？複数枚読み込めますか？',
+      keywords: ['画像', '読み込', 'アップロード', '複数枚', '正面', '側面', '裏面'],
+      a: '②の「＋ 画像を追加」で、正面・側面・裏面など好きな枚数の画像を追加できます。JPEG・PNGに加えて、SVG(ベクター画像)も読み込めます。SVGはJPEGのような圧縮ノイズが無いため、ベタ塗りのシンプルなデータであれば、より精度の高い解析ができます。各画像ごとに、実寸(mm)・バリエーション・最小再現幅・解析範囲を個別に設定できます。1回の「解析する」で、追加したすべての画像をまとめてチェックします。'
+    },
+    {
+      q: '実寸(mm)は画像のどこを基準にしていますか？',
+      keywords: ['実寸', '余白', 'アートボード', '基準', 'サイズが違う'],
+      a: '②に入力した実寸(mm)は、画像ファイル全体(余白込みのキャンバス)ではなく、<b>実際に検出された中身(製品本体)の外形(幅または高さ)</b>に対応します。画像に余白がある場合でも、製品本体の方が指定した実寸になるよう自動で計算されます。ただし、1枚の画像に複数の解析範囲(6面図など)を描いた場合は、共通の写真全体のスケールをそのまま使います。'
+    },
+    {
+      q: '1枚の画像に表面と裏面や6面図が入っている場合はどうすればいいですか？',
+      keywords: ['6面図', '表裏', '表面裏面', '一枚の画像', '1枚の画像', '複数の面', '両面'],
+      a: 'その画像の中で「🔲 解析範囲を指定」を使って、表面の部分だけを四角で囲み、続けて裏面の部分だけをもう一つ四角で囲んでください。'
+        + '<b>四角(範囲)を2個以上描くと、自動的にそれぞれ別の面として個別に解析・レポート</b>されます。各範囲には名前(例: 表面/裏面)を付けられます。寸法線や指示テキストなど不要な部分は、どの四角にも含めないでください。'
+    },
+    {
+      q: '解析範囲(ROI)とは何ですか？何のために使いますか？',
+      keywords: ['解析範囲', 'roi', 'ROI', '範囲を指定', '四角で囲', 'トリムマーク', '寸法線', '指示'],
+      a: '画像の中で「実際に解析したいデザイン部分」だけをドラッグで四角く囲む機能です。寸法線・カラーコードの文字・キーホルダー金具などの指示部分を解析対象から除外したいときに使います。'
+        + '範囲を1つも描かない場合は、②の「自動的に一番大きなかたまりだけを解析する」がオンなら、自動的に一番大きい塊(製品本体)だけが対象になります。'
+    },
+    {
+      q: '自動的に一番大きなかたまりだけを解析する、とは何ですか？',
+      keywords: ['自動的に一番大きな', 'かたまり', '自動除外', 'トリムマーク'],
+      a: '解析範囲(ROI)を手動で指定しなかった場合のデフォルト動作です。画像の中で一番大きくひとつながりの塊(＝通常は製品本体)だけを自動的に解析対象にし、離れた場所にある小さい要素(隅のトリムマーク、寸法線、テキストなど)を自動的に除外します。うまく除外できない場合は、手動で解析範囲を指定してください。'
+    },
+    {
+      q: '背景色や仕切り線の色はどうやって指定しますか？',
+      keywords: ['背景色', '仕切り線の色', '陽線の色', '色を指定', 'スポイト', 'クリックして色'],
+      a: '③の「画像をクリックして背景色を指定」または「画像をクリックして仕切り線の色を指定」のボタンを押してから、②の画像上で対象の色をクリックしてください。背景色は「材料が無い部分」の判定に、仕切り線の色は「仕切りの最小幅」の判定に使われます。画像が小さくて狙いづらいときは、カーソルを合わせると拡大ルーペが出るので、正確なピクセルを狙えます(⑤の色登録でも同じルーペが使えます)。'
+    },
+    {
+      q: '仕切り線(陽線)とは何ですか？',
+      keywords: ['陽線', '仕切り線とは', '仕切りとは'],
+      a: '金属加工(七宝・エナメル)で、色と色の間にある、金属そのものの色をした細い線のことです。色を流し込む区画を仕切るための壁で、これが無いと隣の色と混ざってしまいます。ソフトPVCでも同じ役割の仕切りがありますが、あちらは金型側が凸のため、成形品では逆に凹(溝)として現れます。'
+    },
+    {
+      q: '色の許容誤差とは何ですか？どう調整すればいいですか？',
+      keywords: ['色の許容誤差', '許容誤差', 'tolerance', '誤差とは', '誤差を上げ', '誤差を下げ'],
+      a: '③の近くにあるスライダーで、「ある画素の色が、背景色・⑤で登録した色に、どれくらい近ければ同じ色とみなすか」の範囲を決める数値です(初期値40、範囲は5〜120)。'
+        + '<ul>'
+        + '<li><b>数値を上げる(誤差を大きく許容)</b>：JPEGのにじみやアンチエイリアス、グラデーションを同じ色に丸め込みやすくなります。ただし、上げすぎると<b>本来は別の色のはずの部分まで同じ色</b>として誤って吸収してしまいます。</li>'
+        + '<li><b>数値を下げる(誤差を厳しく)</b>：似た色どうしを正確に区別しやすくなりますが、下げすぎると、ちょっとした色のにじみが<b>別の色(＝境界)</b>として過剰に検出されてしまいます。</li>'
+        + '</ul>'
+        + '目安として、デザインが少ない色数のベタ塗りなら低め(20〜30程度)、写真調・グラデーションが多いなら高め(50〜80程度)から試すとよいです。背景の白とデザインの白っぽい部分(マーク等)が同じ色として誤って消えてしまう場合は、この数値を下げるか、⑤でその色を登録してください(登録した色は誤差内でも「材料」として優先的に扱われます)。'
+    },
+    {
+      q: '色の境界を検出する感度とは何ですか？',
+      keywords: ['境界を検出する感度', '検出する感度', '感度とは', '感度を上げ', '感度を下げ', 'sensitivity'],
+      a: '⑥・⑧で、⑤の色登録を<b>していないとき</b>に使われる数値です(初期値40、範囲は10〜120)。隣り合う画素どうしの色の差を見て、どのくらいの差があれば「色が変わった＝境界(仕切りが必要な場所)」とみなすかを決めます。'
+        + '<ul>'
+        + '<li><b>数値を下げる</b>：わずかな色の違いも境界として拾うようになります。細かい模様は拾いやすくなりますが、ノイズやグラデーションも境界として検出され、仕切りだらけになりやすいです。</li>'
+        + '<li><b>数値を上げる</b>：はっきり違う色どうしの境界だけを拾うようになり、細かいノイズは無視しやすくなりますが、似た色どうしの境界は見逃しやすくなります。</li>'
+        + '</ul>'
+        + '⑤で色を登録すると、この感度は使われなくなります(登録した色どうしの境界を直接計算するため、より正確です)。誤検出が多い場合は、感度を調整するよりも、⑤で実際にデザインで使っている色を登録することをおすすめします。'
+    },
+    {
+      q: '⑤の色を登録する機能は何のためにありますか？',
+      keywords: ['⑤', 'パレット', '色を登録', 'デザインの色'],
+      a: '自動判定だけだと、グラデーションやアンチエイリアスも別の色として細かく拾ってしまうことがあります。実際にデザインで使っている色(例: 灰色・赤・黒など)をあらかじめ登録しておくと、すべての画素が一番近い登録色に丸められてから境界を検出するため、誤検出が大幅に減ります。「🎨 画像をクリックして色を追加」で色登録モードに入り、順番にクリックしていってください。'
+    },
+    {
+      q: '「凸(金属)にする」チェックは何のためですか？',
+      keywords: ['凸(金属)にする', '凸 金属', '金属にする'],
+      a: '登録した色のうち、すでに輪郭線・目鼻・文字などに使われている色(黒・グレーなど)を、仕切りの計算とは関係なく、そのまま金属色(凸)として表示したい場合に使います。すでに仕切り線が描かれているデザインを読み込んだときに使うと、ツールが独自に仕切りを計算し直すのではなく、描かれている線をそのまま仕切りとして扱えます。チェックを入れた色は、印刷提案の判定・⑥の色塗り・⑧のSVGの色塗りからも除外され、仕切り(壁)として扱われます。'
+    },
+    {
+      q: '⑥製品イメージを生成するとは何をする機能ですか？',
+      keywords: ['⑥', '製品イメージ', '仕切り線プレビュー', 'プレビューを生成', '凸凹', '凸か凹', 'シルバー', '彩色フィギュア'],
+      a: '製法・バリエーションに応じて、製品が完成したときのイメージ画像を生成する機能です(旧名「仕切り線プレビューを生成する」)。対象になるのは「印刷」「転写シール」以外のすべてです。'
+        + '<ul>'
+        + '<li><b>凸凹色入れ有り(金属プレート・ダイキャストの七宝等)</b>：仕切り(壁)は指定した金属色のフラット単色、色が入る凹部分はチェックボックスで「元のデザイン色」と「薄いグレー(単色)」を切り替えられます。</li>'
+        + '<li><b>凸凹色入れ無し</b>：輪郭・模様の境目を濃いグレー、それ以外を薄いグレーにした2色で、全体が金属であることを表現します。</li>'
+        + '<li><b>色入れ無し(メッキ1色のみ)・立体成形・プレート成形</b>：製品全体を、指定した金属色のメタリックな質感(光沢・陰影)で表現します。</li>'
+        + '<li><b>ポリストーン等(筆彩色)</b>：金属色にはせず、元のデザイン色を活かした「彩色済みフィギュア」風の軽い陰影イメージにします。</li>'
+        + '</ul>'
+        + 'なお、①でソフトPVCを選ぶと、仕上げの向きが自動的に「凹」になります(金属と凸凹が逆のため)。'
+    },
+    {
+      q: '⑧実寸SVGで書き出すとは何をする機能ですか？',
+      keywords: ['⑧', 'svg', 'SVG', 'ベクター', '書き出す', 'ai', 'AI', 'pdf', 'PDF'],
+      a: '実寸(mm)に合わせたSVGファイルを、面(画像)ごとに書き出す機能です。右下(帯)に、⑤で登録した色(未登録なら③の色)の一覧を並べます。'
+        + '<ul>'
+        + '<li><b>ポリストーン等(筆彩色)</b>：形状の輪郭線と、登録した色どうしの境目を、それぞれの色で塗りつぶしたパスとして出力します。</li>'
+        + '<li><b>金属プレート・ダイキャストの凸凹色入れ(有り/無し)</b>：仕切り(壁)は仕切り幅ぶんの帯の輪郭そのものをたどるので、内側・外側の2本線として出力されます。色が入る凹部分は、登録した色で塗りつぶします(「凸(金属)にする」を付けた色は仕切り扱いになり、塗りには含まれません)。</li>'
+        + '<li><b>印刷・転写シール</b>：形状という概念が薄いため対象外です。</li>'
+        + '</ul>'
+        + '画素の格子をそのままなぞる単純な方式のため、曲線はやや直線的(階段状)になります。滑らかな清書が必要な場合はIllustrator等で仕上げてください。AI・PDFファイルの直接読み込みには対応していません(SVGとして書き出してから読み込んでください)。'
+    },
+    {
+      q: '製法やバリエーションを変えたら、色の指定や解析範囲が消えました',
+      keywords: ['消えました', 'リセット', '設定が消え', '初期化'],
+      a: '仕様が変わったときに古い設定が残らないよう、①の製法または②のバリエーションを変更すると、写真・実寸以外(解析結果、⑥⑧の生成結果、③の背景色・仕切り線の色、②の解析範囲)が自動的にリセットされる仕様です。⑤で登録したデザインの色(パレット)だけは、×で個別に削除・追加できるため、リセットされません。'
+    },
+    {
+      q: '印刷への変更提案(P1やP2の指摘)とは何ですか？',
+      keywords: ['印刷への変更', '印刷を検討', '印刷提案', 'p1', 'P1', '色入れが難しい', '色が入れられない', '色入れできない', '色が入らない'],
+      a: '⑤で色を登録している場合、⑥の生成時に「実際に指定した太さの仕切りを引いたら、その色の面はどれだけ残るか」を計算し、ほぼ全部埋まってしまう(残存率12%未満)箇所を検出します。文字や細かい模様など、色を流し込む加工では再現できない可能性が高い箇所に、印刷への変更を提案します。近い場所にある指摘は自動的に1つにまとめて表示されます。'
+    },
+    {
+      q: '最小再現幅とは何ですか？どう決めればいいですか？',
+      keywords: ['最小再現幅', '最小幅とは', 'mm入力'],
+      a: 'これより細い部分は実際にはこの太さに盛られて(または欠けて)再現される、という目安の数値です。バリエーションを選ぶと初期値が自動で入りますが、実際に製造してみて感覚が違った場合は、その都度この数値を調整することで精度が上がっていきます。'
+    },
+    {
+      q: '指摘リストの番号をクリックすると何が起きますか？',
+      keywords: ['クリックすると点滅', '番号をクリック', '点滅'],
+      a: '指摘リストの項目をクリックすると、キャンバス上の対応するマーカーが黄色く大きく点滅します(約1.8秒間)。画面が長い場合は該当画像まで自動でスクロールします。どの指摘がデザインのどの部分を指しているか分かりやすくするための機能です。'
+    },
+    {
+      q: '⑦製法を追加する方法を教えてください',
+      keywords: ['⑦', '製法を追加', '製法を登録', '新しい製法', 'json', 'JSON'],
+      a: '⑦を開き、製法名とバリエーション(名前・判定方式「材料の最小幅」or「仕切り線の最小幅」・最小幅mm)を入力して「この製法を登録する」を押すと、①ですぐ選べるようになります。登録した製法一覧はJSONで書き出し・読み込みができるので、他のPCや同僚と共有できます。'
+    },
+    {
+      q: '材料の最小幅と仕切り線の最小幅の違いは何ですか？',
+      keywords: ['材料の最小幅', '仕切り線の最小幅', '判定方式の違い', '2つの違い'],
+      a: '<b>材料の最小幅</b>は、線や文字などの「素材そのもの」の太さを見る判定です(樹脂・彫刻・印刷など)。<b>仕切り線の最小幅</b>は、色と色を仕切る壁(陽線)の太さを見る判定です(七宝・エナメル・ソフトPVCの色流し込みなど)。同じ「0.5mm」という数値でも、意味も計算方法も異なります。'
+    },
+    {
+      q: '結果の赤い表示は何を意味していますか？',
+      keywords: ['赤い表示', '赤く表示', '問題箇所を赤'], 
+      a: '指定した最小幅を下回っている(＝実物ではこの太さに盛られる、欠ける、または色が混ざる可能性がある)箇所を赤く塗って示しています。「問題箇所を赤で表示」のチェックを外すと、元の画像だけを確認できます。'
+    },
+    {
+      q: 'このツールの結果はどこまで信用できますか？',
+      keywords: ['信用', '正確', '目安', '注意事項', '免責'],
+      a: 'この結果は画像の色分布から機械的に推定した目安です。実際の再現性は素材・加工機・メーカーの仕様によって変わります。特に立体成形の「型から抜けるか(アンダーカット)」「強度」などは、このツールでは判定できません。最終的な仕様の可否は、必ず加工会社・原型師にご確認ください。'
+    },
+    {
+      q: 'ひとつも項目に一致しない場合の使い方の流れを教えてください',
+      keywords: ['使い方', '流れ', 'はじめ方', 'やり方が分からない', 'どうすれば'],
+      a: '基本の流れは次の通りです。<ul>'
+        + '<li>① 製法を選ぶ</li>'
+        + '<li>② 画像を追加し、実寸(mm)・バリエーションを設定(必要なら解析範囲も指定)</li>'
+        + '<li>③ 背景色・仕切り線の色を指定</li>'
+        + '<li>「解析する」を押して結果を確認</li>'
+        + '<li>必要なら⑤で色を登録してから⑥で製品イメージを生成</li>'
+        + '<li>必要なら⑧で実寸のSVGを書き出し</li>'
+        + '</ul>他に気になる項目があれば、下の「よくある質問」ボタンか、質問を直接入力してください。'
+    }
+  ];
+
+  function helpBotScore(question, entry) {
+    const q = question.toLowerCase();
+    let score = 0;
+    entry.keywords.forEach(function(k) {
+      if (q.indexOf(k.toLowerCase()) !== -1) score++;
+    });
+    return score;
+  }
+
+  function findHelpBotAnswer(question) {
+    let best = null, bestScore = 0;
+    HELPBOT_FAQ.forEach(function(entry) {
+      const s = helpBotScore(question, entry);
+      if (s > bestScore) { bestScore = s; best = entry; }
+    });
+    if (best && bestScore > 0) return best.a;
+    return '申し訳ありません、うまく一致する回答が見つかりませんでした。もう少し具体的なキーワード(例:「解析範囲」「パレット」「印刷提案」「6面図」など)で聞いていただくか、下の「よくある質問」ボタンからお選びください。';
+  }
+
+  function toggleHelpBot() {
+    const panel = document.getElementById('helpBotPanel');
+    const opening = !panel.classList.contains('open');
+    panel.classList.toggle('open');
+    if (opening) {
+      document.getElementById('helpBotBadge').style.display = 'none';
+      if (!helpBotInitialized) initHelpBot();
+      document.getElementById('helpBotInput').focus();
+    }
+  }
+
+  let helpBotInitialized = false;
+  function initHelpBot() {
+    helpBotInitialized = true;
+    appendHelpBotMessage('bot',
+      'こんにちは！このツールの使い方について、なんでも聞いてください。<br>例:「6面図はどう解析すればいい？」「印刷提案って何？」「陽線とは？」');
+    renderHelpBotQuickReplies();
+  }
+
+  function renderHelpBotQuickReplies() {
+    const wrap = document.getElementById('helpBotQuick');
+    wrap.innerHTML = '';
+    const picks = [
+      '①製法とは何ですか？何を選べばいいですか？',
+      '1枚の画像に表面と裏面や6面図が入っている場合はどうすればいいですか？',
+      '⑥仕切り線プレビュー生成とは何をする機能ですか？',
+      '印刷への変更提案(P1やP2の指摘)とは何ですか？'
+    ];
+    picks.forEach(function(q) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'helpbot-quick-btn';
+      btn.textContent = q.length > 22 ? q.slice(0, 22) + '…' : q;
+      btn.title = q;
+      btn.addEventListener('click', function() { submitHelpBotQuestion(q); });
+      wrap.appendChild(btn);
+    });
+  }
+
+  function appendHelpBotMessage(role, html) {
+    const list = document.getElementById('helpBotMessages');
+    const div = document.createElement('div');
+    div.className = 'helpbot-msg ' + role;
+    div.innerHTML = html;
+    list.appendChild(div);
+    list.scrollTop = list.scrollHeight;
+  }
+
+  function sendHelpBotMessage() {
+    const input = document.getElementById('helpBotInput');
+    const q = input.value.trim();
+    if (!q) return;
+    input.value = '';
+    submitHelpBotQuestion(q);
+  }
+
+  function submitHelpBotQuestion(q) {
+    appendHelpBotMessage('user', q.replace(/</g, '&lt;'));
+    const answer = findHelpBotAnswer(q);
+    setTimeout(function() { appendHelpBotMessage('bot', answer); }, 250);
+  }
+</script>
+
+<!-- ══════ 使い方ガイド チャットボット ══════ -->
+<button type="button" id="helpBotButton" onclick="toggleHelpBot()" title="使い方ガイド">
+  💬<span class="badge-dot" id="helpBotBadge"></span>
+</button>
+
+<div id="helpBotPanel">
+  <div class="helpbot-header">
+    <div>
+      <h3>使い方ガイド</h3>
+      <p>このツールの使い方について質問できます</p>
+    </div>
+    <button type="button" class="helpbot-close" onclick="toggleHelpBot()">×</button>
+  </div>
+  <div class="helpbot-messages" id="helpBotMessages"></div>
+  <div class="helpbot-quick" id="helpBotQuick"></div>
+  <div class="helpbot-input-row">
+    <input type="text" id="helpBotInput" placeholder="質問を入力(例: 表裏を分けたい)" onkeydown="if(event.key==='Enter') sendHelpBotMessage();">
+    <button type="button" onclick="sendHelpBotMessage()">➤</button>
+  </div>
+</div>
+
+</body>
+</html>
